@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myproject"
+version = "0.0.1"
+requires-python = ">= 3.10"
+readme = "README.md"
+description = "Python project template."
+authors = [
+  {name = "Addison Howe"},
+]
+dependencies = [
+  "numpy>=2.2",
+  "matplotlib>=3.10",
+]
+
+[project.scripts]
+myproject = "myproject.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.9",
+]
+notebook = [
+  "ipykernel",
+  "ipywidgets",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["benchmark: mark test as benchmarking"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "F",     # pyflakes
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "I",     # isort (import sorting)
+  "UP",    # pyupgrade (modern Python syntax)
+  "B",     # flake8-bugbear (common bugs)
+]

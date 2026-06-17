@@ -1,0 +1,11 @@
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12.*
+  - pip
+  - pip:
+    - -e .[dev]
+    # .  # bare minimum
+    # - .[dev,notebook]  # include optional dependencies
+    # - -e .[dev,notebook]  # optional dependencies in editing mode
