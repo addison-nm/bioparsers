@@ -1,7 +1,7 @@
 import sys
 
 def main():
-    from myproject.main import parse_args, main
+    from bioparsers.main import parse_args, main
     args = parse_args(sys.argv[1:])
     main(args)
 

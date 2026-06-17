@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import shutil
 
-DATDIR = Path(__file__).parent / "data"      # data directory for all tests.
+DATDIR = Path(__file__).parent / "_data"      # data directory for all tests.
 TEST_OUTDIR = Path(__file__).parent / "_tmp"  # output directory for all tests.
 
 def remove_dir(dir: str | Path):

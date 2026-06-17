@@ -4,7 +4,7 @@
 
 import pytest
 
-from myproject.core import foo
+from bioparsers.core import foo
 
 ###################
 ##  Begin Tests  ##
