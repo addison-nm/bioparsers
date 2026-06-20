@@ -231,7 +231,7 @@ NUM_SPROT_EXP_FILES = 40
 
 class TestJsonExpectations:
     """Per-entry comparison against hand-written JSON expectations under
-    tests/_data/dbio_v2/parser_expectations/uniprot_sprot_mini/."""
+    tests/_data/uniprot_sprot_mini/."""
     
     @pytest.mark.parametrize("idx", range(NUM_SPROT_EXP_FILES))
     def test_record_matches_expectation(self, sprot, idx):

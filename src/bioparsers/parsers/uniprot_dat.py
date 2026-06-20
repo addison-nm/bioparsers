@@ -11,8 +11,8 @@ fields the source provides without BioM3-prose and minimal modification
 or reshaping. Verifies sequence length.
 
 Real mini fixtures for tests:
-  tests/_data/dbio_v2/uniprot_sprot_mini.dat   (100 real Reviewed entries)
-  tests/_data/dbio_v2/uniprot_trembl_mini.dat  (100 real Unreviewed entries)
+  tests/_data/uniprot_sprot_mini.dat   (100 real Reviewed entries)
+  tests/_data/uniprot_trembl_mini.dat  (100 real Unreviewed entries)
 
 Structure
 ---------
@@ -31,7 +31,8 @@ The bracketed two-letter code is the source flat-file line tag.
 - ``status``            [ID]    : str, ``"Reviewed"`` (Swiss-Prot) or
                                   ``"Unreviewed"`` (TrEMBL)
 - ``accessions``        [AC]    : list[str], all AC numbers in file order
-- ``primary_accession`` [AC]    : str, first AC (stable identifier)
+- ``primary_accession`` [AC]    : str | None, first AC (stable identifier),
+                                  or None if the entry has no AC line
 - ``dates``             [DT]    : list[str], raw DT lines (3 lines expected)
 - ``description``       [DE]    : dict, structured per userman.html "The DE
                                   line": ``{rec_name, sub_name, alt_names,
@@ -216,14 +217,15 @@ def parse_entry(lines: list[str]) -> UniProtRecord:
 
     _validate(acc, sequence)
     acc["sequence"] = sequence
+    acc["sequence_length"] = len(sequence)  # == ID length == SQ length (validated)
 
     # Drop internal bookkeeping keys before building the Record.
-    id_length = acc.pop("_id_length")
+    acc.pop("_id_length")
+    acc.pop("_sq_length")
     acc.pop("_cc_topic", None)
     acc.pop("_cc_text", None)
     acc.pop("_ft_qual", None)
     acc.pop("_in_sq", None)
-    acc["sequence_length"] = id_length  # validated == SQ length below
 
     return UniProtRecord(**acc)
 
@@ -253,6 +255,12 @@ def _text(line: str) -> str:
     return line[5:].rstrip("\n")
 
 
+def _split_semi(data: str) -> list[str]:
+    """Split a ``;``-delimited UniProt line body into stripped, non-empty
+    tokens (the field-terminator convention shared by AC, GN, and KW)."""
+    return [t.strip() for t in data.split(";") if t.strip()]
+
+
 def _join_wrap(parts) -> str:
     """Join wrapped UniProt continuation lines with one space, except
     when the previous chunk ends with ``-``. UniProt wraps mid-word on a
@@ -277,7 +285,7 @@ def _new_accumulator() -> dict:
         "references": [], "comments": [], "_cc_topic": None, "_cc_text": [],
         "cross_references": {}, "features": [], "_ft_qual": None,
         "keywords": [], "protein_existence": None,
-        "sequence_length": None, "molecular_weight": None, "crc64": None,
+        "_sq_length": None, "molecular_weight": None, "crc64": None,
         "_seq_chunks": [], "_in_sq": False, "unparsed": {},
     }
 
@@ -286,15 +294,15 @@ def _validate(acc, sequence: str) -> None:
     accession = acc["accessions"][0] if acc["accessions"] else acc["entry_name"]
     if acc["entry_name"] is None:
         raise ParseError("entry has no ID line")
-    if acc["crc64"] is None or acc["sequence_length"] is None:
+    if acc["crc64"] is None or acc["_sq_length"] is None:
         raise ParseError(f"{accession}: entry has no SQ line / sequence header")
     if not sequence:
         raise ParseError(f"{accession}: entry has no sequence")
     assembled = len(sequence)
-    if assembled != acc["sequence_length"]:
+    if assembled != acc["_sq_length"]:
         raise ParseError(
             f"{accession}: assembled length {assembled} != SQ length "
-            f"{acc['sequence_length']}"
+            f"{acc['_sq_length']}"
         )
     if acc["_id_length"] is not None and assembled != acc["_id_length"]:
         raise ParseError(
@@ -473,10 +481,7 @@ def _h_id(data, acc):
 
 
 def _h_ac(data, acc):
-    for token in data.split(";"):
-        token = token.strip()
-        if token:
-            acc["accessions"].append(token)
+    acc["accessions"].extend(_split_semi(data))
 
 
 def _h_dt(data, acc):
@@ -490,10 +495,7 @@ def _h_de(data, acc):
 def _h_gn(data, acc):
     # GN lines are `Key=value; Key=value; ...;` — one element per sub-token
     # (per the spec at https://web.expasy.org/docs/userman.html, "The GN line").
-    for token in data.split(";"):
-        token = token.strip()
-        if token:
-            acc["gene_names"].append(token)
+    acc["gene_names"].extend(_split_semi(data))
 
 
 def _h_os(data, acc):
@@ -621,10 +623,7 @@ def _h_ft(data, acc):
 
 
 def _h_kw(data, acc):
-    for token in data.rstrip().rstrip(".").split(";"):
-        token = token.strip()
-        if token:
-            acc["keywords"].append(token)
+    acc["keywords"].extend(_split_semi(data.rstrip().rstrip(".")))
 
 
 def _h_pe(data, acc):
@@ -635,7 +634,7 @@ def _h_sq(data, acc):
     m = _SQ_RE.search(data)
     if not m:
         raise ParseError(f"malformed SQ line: {data!r}")
-    acc["sequence_length"] = int(m.group("length"))
+    acc["_sq_length"] = int(m.group("length"))
     acc["molecular_weight"] = int(m.group("mw"))
     acc["crc64"] = m.group("crc")
     acc["_in_sq"] = True

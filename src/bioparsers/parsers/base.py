@@ -178,7 +178,7 @@ class Record:
         is not emitted). Default ``indent=None`` yields compact one-line
         output suitable for JSONL streaming; pass ``indent=2`` or ``4``
         for pretty-printing. The defaults match what the expectation
-        JSONs under ``tests/_data/dbio_v2/parser_expectations/`` use, so
+        JSONs under ``tests/_data/uniprot_sprot_mini/`` use, so
         ``json.loads(rec.to_json())`` round-trips back to ``as_dict``.
         """
         return json.dumps(
@@ -238,13 +238,8 @@ def iter_lines(path: str, encoding: str = "utf-8") -> Iterator[str]:
     responsible for any stripping. Stdlib only — no ``pigz``/``zcat``
     subprocess, which is what made the legacy reader silently truncate.
     """
-    opener = gzip.open if path.endswith(".gz") else open
-    try:
-        with opener(path, "rt", encoding=encoding) as handle:
-            for line in handle:
-                yield line
-    except (EOFError, gzip.BadGzipFile, OSError) as exc:
-        raise ParseError(f"failed reading {path}: {exc}") from exc
+    with open_text(path, encoding) as handle:
+        yield from handle
 
 
 @contextmanager
