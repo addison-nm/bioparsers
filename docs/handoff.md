@@ -20,10 +20,10 @@ business logic.
 |---|---|
 | **`bioparsers.parsers.base`** — `Record`, `ParseError`, `SchemaError`, fail-loud `iter_lines`/`open_text`, `dump_jsonl` helper | Done, well-tested |
 | **`bioparsers.parsers.uniprot_dat`** — `UniProtRecord` (23-field schema), `iter_records`, `parse_entry`, `parse_description`, line-code helpers | Done, well-tested |
-| **Test suite** — `tests/parsers/test_base.py` + `tests/parsers/test_uniprot_dat.py` | 130 tests, all green |
+| **Test suite** — `tests/parsers/test_base.py` + `tests/parsers/test_uniprot_dat.py` + `tests/test_cli.py` | 136 tests, all green |
 | **Fixtures** — 100 real Swiss-Prot + 100 real TrEMBL entries (`.dat`), 40 hand-curated per-entry expectation JSONs | Committed |
 | **Other parsers** — Pfam Stockholm, ExPASy `enzyme.dat`, BRENDA flatfile, SMART TSV | Not started |
-| **CLI** | Placeholder only (`bioparsers.__main__` prints args) |
+| **CLI** — `bioparsers <parser> INPUT [-o OUT]` streams JSONL (`bioparsers.main`) | Done (UniProt subcommand) |
 | **PyPI packaging** | Not done; `pyproject.toml` declares one runtime dep (`biopython>=1.83`) |
 
 ## Governing design principles
@@ -145,20 +145,20 @@ bio-parsers/
 │   │   │                        dump_jsonl
 │   │   ├── base.py            ← shared primitives
 │   │   └── uniprot_dat.py     ← UniProt Swiss-Prot/TrEMBL .dat parser
-│   ├── core.py, helpers.py    ← placeholder template scaffolding
-│   ├── main.py, __main__.py     (still to be replaced or removed)
+│   ├── main.py                ← CLI (subcommand per parser → JSONL)
+│   ├── __main__.py            ← `python -m bioparsers` shim
 │   └── __init__.py
 ├── tests/
 │   ├── conftest.py            ← --benchmark marker, DATDIR helpers
 │   ├── parsers/
 │   │   ├── test_base.py
 │   │   └── test_uniprot_dat.py
+│   ├── test_cli.py
 │   ├── _data/
 │   │   ├── uniprot_sprot_mini.dat       (100 real Reviewed entries)
 │   │   ├── uniprot_trembl_mini.dat      (100 real Unreviewed entries)
 │   │   └── uniprot_sprot_mini/
 │   │       └── sprot_exp_{0..39}.json   (40 hand-curated expectations)
-│   └── test_core.py           ← template placeholder
 ├── docs/
 │   └── handoff.md             ← this file
 ├── env/                       ← in-tree conda env
@@ -232,11 +232,12 @@ changes.
    it validates `Unreviewed` / `SubName:` / abundant `ECO:0000256/0313`
    / `Flags: Fragment` patterns against hand-curated truth.
 
-3. **Replace placeholder CLI** — `src/bioparsers/core.py`,
-   `helpers.py`, `main.py`, `__main__.py` are leftover template
-   scaffolding. Replace with something parser-aware
-   (`bioparsers uniprot --to-jsonl in.dat.gz > out.jsonl`) or remove
-   the CLI script entirely from `pyproject.toml`.
+3. **Extend the CLI** — `bioparsers.main` exposes a subcommand per
+   parser (`bioparsers uniprot in.dat.gz > out.jsonl`), driven by the
+   `_PARSERS` registry. Adding a new parser is one entry there; the
+   subcommand and its `INPUT`/`-o` arguments are generated. JSONL is the
+   only output format (matches `dump_jsonl`); CSV/Parquet stay out of
+   scope.
 
 4. **Publish to PyPI** — once at least UniProt + one more parser are
    in, decide on version (`0.1.0`?), tag, build, publish. Single
@@ -260,7 +261,7 @@ changes.
 cd ~/Projects/bio-parsers
 pip install -e .[dev]
 pytest
-# 132 passed in ~1s
+# 136 passed in ~1s
 ```
 
 Then to add a new parser, mirror the UniProt parser:

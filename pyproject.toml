@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-bioparsers = "bioparsers.__main__:main"
+bioparsers = "bioparsers.main:main"
 
 [project.optional-dependencies]
 dev = [

@@ -1,9 +1,12 @@
+"""Entry point for ``python -m bioparsers``.
+
+The console-script entry point (``bioparsers`` on the PATH) is wired
+directly to :func:`bioparsers.main.main` in ``pyproject.toml``.
+"""
+
 import sys
 
-def main():
-    from bioparsers.main import parse_args, main
-    args = parse_args(sys.argv[1:])
-    main(args)
+from bioparsers.main import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

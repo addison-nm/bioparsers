@@ -41,19 +41,18 @@ Check that the Python version and dependencies match between your local environm
 
 ## Common Errors
 
-### `command not found: myproject`
+### `command not found: bioparsers`
 
 The CLI entry point is only available after installing the package:
 
 ```bash
 pip install -e .[dev]
-myproject
+bioparsers uniprot --help
 ```
 
-### `ruff: command not found`
+### `ParseError` on a `.gz` file
 
-Ruff is included in the dev dependencies. Install with:
-
-```bash
-pip install -e .[dev]
-```
+`bioparsers` reads gzip via the stdlib (not a `pigz`/`zcat` subprocess),
+which verifies the trailing checksum. A `ParseError` mentioning the
+gzip stream means the file is **truncated or corrupt** — re-download or
+re-create it rather than working around the error.
