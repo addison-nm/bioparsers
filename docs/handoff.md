@@ -137,7 +137,7 @@ detail for downstream parsing.
 ## Repo layout
 
 ```
-bio-parsers/
+bioparsers/
 ├── src/bioparsers/
 │   ├── parsers/
 │   │   ├── __init__.py        ← re-exports Record, ParseError,
@@ -258,7 +258,7 @@ changes.
 ## Quick start for a contributor
 
 ```bash
-cd ~/Projects/bio-parsers
+cd ~/Projects/bioparsers
 pip install -e .[dev]
 pytest
 # 136 passed in ~1s
