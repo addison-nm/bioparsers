@@ -46,18 +46,43 @@ def parse_args(argv):
             "-o", "--output", default=None,
             help="output path for the JSONL (default: stdout)",
         )
+        p.add_argument(
+            "--progress", nargs="?", type=int, const=100_000, default=None,
+            metavar="N",
+            help="print a record-count heartbeat to stderr every N records "
+                 "(default 100000 when given with no value)",
+        )
     return parser.parse_args(argv)
 
 
-def run(parser_name: str, input_path: str, output_path: str | None) -> int:
+def _with_progress(records: Iterator[Record], every: int) -> Iterator[Record]:
+    """Yield from *records*, printing a count heartbeat to stderr every
+    *every* records. Heartbeats go to stderr so they survive a stdout pipe.
+    """
+    count = 0
+    for count, rec in enumerate(records, 1):
+        if count % every == 0:
+            print(f"  ... {count} records", file=sys.stderr)
+        yield rec
+
+
+def run(
+    parser_name: str,
+    input_path: str,
+    output_path: str | None,
+    progress: int | None = None,
+) -> int:
     """Parse *input_path* with the named parser and write JSONL to
     *output_path* (or stdout when None). Returns the record count.
 
-    Propagates ``ParseError`` from the parser; ``main`` turns it into a
-    non-zero exit.
+    When *progress* is a positive int, a heartbeat is printed to stderr
+    every *progress* records. Propagates ``ParseError`` from the parser;
+    ``main`` turns it into a non-zero exit.
     """
     iter_records = _PARSERS[parser_name]
     records = iter_records(input_path)
+    if progress:
+        records = _with_progress(records, progress)
     if output_path is None:
         return dump_jsonl(records, sys.stdout)
     with open(output_path, "w", encoding="utf-8") as handle:
@@ -67,7 +92,7 @@ def run(parser_name: str, input_path: str, output_path: str | None) -> int:
 def main(argv=None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        count = run(args.parser, args.input, args.output)
+        count = run(args.parser, args.input, args.output, args.progress)
     except ParseError as exc:
         print(f"bioparsers: {exc}", file=sys.stderr)
         return 1

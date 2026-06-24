@@ -23,6 +23,21 @@ class TestCli:
         assert all(json.loads(line) for line in lines)
         assert "100 records" in out.err
 
+    def test_progress_heartbeat_to_stderr(self, capsys):
+        # 100 fixture records, heartbeat every 25 -> 4 heartbeats on stderr,
+        # while stdout still carries all 100 JSONL lines.
+        rc = main(["uniprot", SPROT, "--progress", "25"])
+        out = capsys.readouterr()
+        assert rc == 0
+        assert len(out.out.splitlines()) == 100
+        beats = [ln for ln in out.err.splitlines() if "..." in ln]
+        assert len(beats) == 4
+        assert "... 100 records" in out.err
+
+    def test_no_progress_by_default(self, capsys):
+        main(["uniprot", SPROT])
+        assert "..." not in capsys.readouterr().err
+
     def test_stdout_matches_iter_records(self, capsys):
         main(["uniprot", SPROT])
         emitted = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
