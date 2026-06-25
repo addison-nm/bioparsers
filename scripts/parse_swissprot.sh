@@ -3,4 +3,4 @@
 set -euo pipefail
 
 mkdir -p outputs
-bioparsers uniprot data/swissprot/uniprot_sprot.dat.gz --progress | gzip -c > outputs/uniprot_sprot.jsonl.gz
+bioparsers uniprot data/swissprot/uniprot_sprot.dat.gz --progress --gzip -o outputs/uniprot_sprot.jsonl.gz

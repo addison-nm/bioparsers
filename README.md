@@ -47,7 +47,7 @@ conda activate ./env
 Or with pip into an existing environment:
 
 ```bash
-pip install -e .[dev]
+pip install -e '.[dev]'
 ```
 
 ## Usage
@@ -80,9 +80,13 @@ or gzipped:
 ```bash
 bioparsers uniprot uniprot_sprot.dat.gz > out.jsonl
 bioparsers uniprot in.dat -o out.jsonl
+bioparsers uniprot in.dat.gz --gzip -o out.jsonl.gz   # compress output
+bioparsers uniprot in.dat.gz --progress > out.jsonl   # heartbeat to stderr
 ```
 
-The record count is reported on stderr; corrupt or truncated input exits
+Pass `--gzip` (`-z`) to compress the output, and `--progress [N]` for a
+record-count heartbeat on stderr (every N records, default 100000). The
+record count is reported on stderr; corrupt or truncated input exits
 non-zero with a message on stderr.
 
 ## Tests

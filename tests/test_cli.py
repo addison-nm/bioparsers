@@ -1,5 +1,6 @@
 """Tests for the ``bioparsers`` command-line interface."""
 
+import gzip
 import json
 import os
 
@@ -53,6 +54,23 @@ class TestCli:
         lines = out_path.read_text().splitlines()
         assert len(lines) == 100
         assert json.loads(lines[0])["entry_name"] == "001R_FRG3G"
+
+    def test_gzip_output_file(self, tmp_path, capsys):
+        out_path = tmp_path / "out.jsonl.gz"
+        rc = main(["uniprot", SPROT, "--gzip", "-o", str(out_path)])
+        assert rc == 0
+        assert capsys.readouterr().out == ""
+        with gzip.open(out_path, "rt") as fh:
+            lines = fh.read().splitlines()
+        assert len(lines) == 100
+        assert json.loads(lines[0])["entry_name"] == "001R_FRG3G"
+
+    def test_gzip_stdout(self, capsysbinary):
+        rc = main(["uniprot", SPROT, "-z"])
+        assert rc == 0
+        raw = capsysbinary.readouterr().out
+        lines = gzip.decompress(raw).decode().splitlines()
+        assert len(lines) == 100
 
     def test_parse_error_returns_nonzero(self, tmp_path, capsys):
         # First entry with its closing `//` removed -> ParseError on read.

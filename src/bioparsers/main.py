@@ -17,6 +17,8 @@ JSONL is currently the only emission format (mirroring the library's
 from __future__ import annotations
 
 import argparse
+import contextlib
+import gzip
 import os
 import sys
 from typing import Callable, Iterator
@@ -47,6 +49,10 @@ def parse_args(argv):
             help="output path for the JSONL (default: stdout)",
         )
         p.add_argument(
+            "-z", "--gzip", action="store_true",
+            help="gzip-compress the output (stdout or -o file)",
+        )
+        p.add_argument(
             "--progress", nargs="?", type=int, const=100_000, default=None,
             metavar="N",
             help="print a record-count heartbeat to stderr every N records "
@@ -66,14 +72,29 @@ def _with_progress(records: Iterator[Record], every: int) -> Iterator[Record]:
         yield rec
 
 
+def _open_output(output_path: str | None, compress: bool):
+    """Return a context manager yielding the text stream to write JSONL to:
+    *output_path* (or stdout when None), gzip-compressed when *compress*.
+    stdout is wrapped in a nullcontext so it is never closed.
+    """
+    if output_path is None:
+        if compress:
+            return gzip.open(sys.stdout.buffer, "wt", encoding="utf-8")
+        return contextlib.nullcontext(sys.stdout)
+    opener = gzip.open if compress else open
+    return opener(output_path, "wt", encoding="utf-8")
+
+
 def run(
     parser_name: str,
     input_path: str,
     output_path: str | None,
     progress: int | None = None,
+    compress: bool = False,
 ) -> int:
     """Parse *input_path* with the named parser and write JSONL to
-    *output_path* (or stdout when None). Returns the record count.
+    *output_path* (or stdout when None), gzip-compressed when *compress*.
+    Returns the record count.
 
     When *progress* is a positive int, a heartbeat is printed to stderr
     every *progress* records. Propagates ``ParseError`` from the parser;
@@ -83,16 +104,14 @@ def run(
     records = iter_records(input_path)
     if progress:
         records = _with_progress(records, progress)
-    if output_path is None:
-        return dump_jsonl(records, sys.stdout)
-    with open(output_path, "w", encoding="utf-8") as handle:
+    with _open_output(output_path, compress) as handle:
         return dump_jsonl(records, handle)
 
 
 def main(argv=None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        count = run(args.parser, args.input, args.output, args.progress)
+        count = run(args.parser, args.input, args.output, args.progress, args.gzip)
     except ParseError as exc:
         print(f"bioparsers: {exc}", file=sys.stderr)
         return 1
