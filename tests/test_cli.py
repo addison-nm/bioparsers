@@ -11,6 +11,8 @@ from bioparsers.parsers.uniprot_dat import iter_records
 
 DATDIR = os.path.join(os.path.dirname(__file__), "_data")
 SPROT = os.path.join(DATDIR, "uniprot_sprot_mini.dat")
+PFAM = os.path.join(DATDIR, "pfam_mini.stockholm")
+PFAM_FASTA = os.path.join(DATDIR, "pfam_mini.fasta")
 
 
 class TestCli:
@@ -84,6 +86,94 @@ class TestCli:
         rc = main(["uniprot", str(bad)])
         assert rc == 1
         assert "bioparsers:" in capsys.readouterr().err
+
+    def test_pfam_to_stdout(self, capsys):
+        rc = main(["pfam", PFAM])
+        out = capsys.readouterr()
+        assert rc == 0
+        lines = out.out.splitlines()
+        assert len(lines) == 3
+        first = json.loads(lines[0])
+        assert first["accession"] == "PF99991"
+        assert first["members"] == []  # omitted by default
+        assert "3 records" in out.err
+
+    def test_pfam_with_member_accessions(self, capsys):
+        rc = main(["pfam", PFAM, "--with-member-accessions"])
+        rec = json.loads(capsys.readouterr().out.splitlines()[0])
+        assert rc == 0
+        assert [m["name"] for m in rec["members"]] == [
+            "SEQ1_TEST", "SEQ2_TEST", "SEQ3_TEST",
+        ]
+        assert all("sequence" not in m for m in rec["members"])
+
+    def test_pfam_filter_and_sequences_join(self, capsys):
+        # --join writes a single stream to stdout (split is the default).
+        rc = main(["pfam", PFAM, "--pfam-id", "PF99991", "--join",
+                   "--with-member-sequences"])
+        out = capsys.readouterr()
+        assert rc == 0
+        lines = out.out.splitlines()
+        assert len(lines) == 1
+        rec = json.loads(lines[0])
+        assert rec["accession"] == "PF99991"
+        # --with-member-sequences implies the member list.
+        assert [m["sequence"] for m in rec["members"]] == [
+            "MACDE", "MAWCDEF", "MWCDE",
+        ]
+        assert "1 records" in out.err
+
+    def test_pfam_join_yields_both_in_order(self, capsys):
+        rc = main(["pfam", PFAM, "--pfam-id", "PF99991", "--pfam-id", "PF99993",
+                   "--join"])
+        out = capsys.readouterr()
+        assert rc == 0
+        accs = [json.loads(l)["accession"] for l in out.out.splitlines()]
+        assert accs == ["PF99991", "PF99993"]
+
+    def test_pfam_split_is_default(self, tmp_path, capsys):
+        # Without --join, each family lands in its own pfam_<acc>.jsonl file.
+        rc = main(["pfam", PFAM, "--pfam-id", "PF99991", "--pfam-id", "PF99993",
+                   "-o", str(tmp_path)])
+        out = capsys.readouterr()
+        assert rc == 0
+        assert out.out == ""  # nothing to stdout in split mode
+        names = sorted(p.name for p in tmp_path.iterdir())
+        assert names == ["pfam_PF99991.jsonl", "pfam_PF99993.jsonl"]
+        for acc in ("PF99991", "PF99993"):
+            lines = (tmp_path / f"pfam_{acc}.jsonl").read_text().splitlines()
+            assert len(lines) == 1
+            assert json.loads(lines[0])["accession"] == acc
+        assert "2 records" in out.err
+
+    def test_pfam_split_single_id(self, tmp_path):
+        rc = main(["pfam", PFAM, "--pfam-id", "PF99992", "-o", str(tmp_path)])
+        assert rc == 0
+        assert [p.name for p in tmp_path.iterdir()] == ["pfam_PF99992.jsonl"]
+
+    def test_pfam_join_to_file(self, tmp_path):
+        out_file = tmp_path / "union.jsonl"
+        rc = main(["pfam", PFAM, "--pfam-id", "PF99991", "--pfam-id", "PF99993",
+                   "--join", "-o", str(out_file)])
+        assert rc == 0
+        accs = [json.loads(l)["accession"] for l in out_file.read_text().splitlines()]
+        assert accs == ["PF99991", "PF99993"]
+
+    def test_pfam_fasta_to_stdout(self, capsys):
+        rc = main(["pfam-fasta", PFAM_FASTA])
+        out = capsys.readouterr()
+        assert rc == 0
+        lines = out.out.splitlines()
+        assert len(lines) == 5
+        assert json.loads(lines[0])["pfam_accession"] == "PF99991"
+        assert "5 records" in out.err
+
+    def test_pfam_fasta_filter(self, capsys):
+        rc = main(["pfam-fasta", PFAM_FASTA, "--pfam-id", "PF99991"])
+        out = capsys.readouterr()
+        assert rc == 0
+        recs = [json.loads(l) for l in out.out.splitlines()]
+        assert [r["name"] for r in recs] == ["SEQ1_TEST", "SEQ2_TEST", "SEQ3_TEST"]
 
     def test_no_subcommand_errors(self):
         with pytest.raises(SystemExit):

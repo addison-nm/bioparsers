@@ -1,0 +1,25 @@
+{
+    "accession": "PF99993",
+    "short_id": "TestFam_C",
+    "name": null,
+    "description": "",
+    "family_type": null,
+    "clan": null,
+    "wikipedia": [],
+    "thresholds": {
+        "gathering": "20.00 20.00",
+        "trusted": "20.10 20.10",
+        "noise": "19.90 19.90"
+    },
+    "references": [],
+    "cross_references": {},
+    "num_sequences": 1,
+    "members": [
+        {
+            "accession": "C0C001AAA1",
+            "name": "SEQZ_TEST",
+            "region": "5-9"
+        }
+    ],
+    "unparsed": {}
+}

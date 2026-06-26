@@ -1,0 +1,37 @@
+{
+    "accession": "PF99992",
+    "short_id": "TestFam_B",
+    "name": "Second test family",
+    "description": "Short description.",
+    "family_type": "Family",
+    "clan": null,
+    "wikipedia": [],
+    "thresholds": {
+        "gathering": "25.00 25.00",
+        "trusted": "25.50 25.50",
+        "noise": "24.90 24.90"
+    },
+    "references": [],
+    "cross_references": {},
+    "num_sequences": 2,
+    "members": [
+        {
+            "accession": "B0B001AAA1",
+            "name": "SEQX_TEST",
+            "region": "1-4"
+        },
+        {
+            "accession": "B0B002BBB2",
+            "name": "SEQY_TEST",
+            "region": "2-6"
+        }
+    ],
+    "unparsed": {
+        "AU": [
+            "Roe B;0000-0000-0000-0003"
+        ],
+        "NE": [
+            "PF99991;"
+        ]
+    }
+}

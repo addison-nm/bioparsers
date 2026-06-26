@@ -16,6 +16,7 @@ from bioparsers.parsers.base import (
     Record,
     SchemaError,
     dump_jsonl,
+    dump_jsonl_split,
     iter_lines,
     open_text,
 )
@@ -23,5 +24,5 @@ from bioparsers.parsers.base import (
 __all__ = [
     "Record", "ParseError", "SchemaError",
     "iter_lines", "open_text",
-    "dump_jsonl",
+    "dump_jsonl", "dump_jsonl_split",
 ]

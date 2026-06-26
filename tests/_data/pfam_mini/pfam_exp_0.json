@@ -1,0 +1,78 @@
+{
+    "accession": "PF99991",
+    "short_id": "TestFam_A",
+    "name": "Test family A description",
+    "description": "This is the first line of the family description. It continues on a second line.",
+    "family_type": "Domain",
+    "clan": "CL0091",
+    "wikipedia": [
+        "Test_protein",
+        "Another_article"
+    ],
+    "thresholds": {
+        "gathering": "27.00 27.00",
+        "trusted": "27.10 27.10",
+        "noise": "26.90 26.90"
+    },
+    "references": [
+        {
+            "RC": "Comment before reference",
+            "RN": "[1]",
+            "RM": "12345678",
+            "RT": "\"A long title that spans across two physical lines in the file.\"",
+            "RA": "Smith J., Doe A., Roe B.",
+            "RL": "J. Test 1:1-10(2020)."
+        },
+        {
+            "RN": "[2]",
+            "RM": "87654321",
+            "RT": "Second reference title.",
+            "RA": "Jones K",
+            "RL": "Test Lett. 2021;5:5-9."
+        }
+    ],
+    "cross_references": {
+        "SO": [
+            "SO; 0000417; polypeptide_domain;"
+        ],
+        "INTERPRO": [
+            "INTERPRO; IPR000001;"
+        ]
+    },
+    "num_sequences": 3,
+    "members": [
+        {
+            "accession": "A0A001AAA1",
+            "name": "SEQ1_TEST",
+            "region": "1-5"
+        },
+        {
+            "accession": "A0A002BBB2",
+            "name": "SEQ2_TEST",
+            "region": "10-16"
+        },
+        {
+            "accession": "A0A003CCC3",
+            "name": "SEQ3_TEST",
+            "region": "3-7"
+        }
+    ],
+    "unparsed": {
+        "AU": [
+            "Smith J;0000-0000-0000-0001",
+            "Doe A;0000-0000-0000-0002"
+        ],
+        "SE": [
+            "ECOD:test"
+        ],
+        "BM": [
+            "hmmbuild HMM.ann SEED.ann"
+        ],
+        "SM": [
+            "hmmsearch -E 1000 HMM pfamseq"
+        ],
+        "PI": [
+            "OldName_A;"
+        ]
+    }
+}

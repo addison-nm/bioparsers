@@ -28,14 +28,15 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 from contextlib import contextmanager
-from typing import ClassVar, IO, Iterable, Iterator, get_origin
+from typing import Callable, ClassVar, IO, Iterable, Iterator, get_origin
 
 
 __all__ = [
     "Record", "ParseError", "SchemaError",
     "iter_lines", "open_text",
-    "dump_jsonl",
+    "dump_jsonl", "dump_jsonl_split",
 ]
 
 
@@ -286,3 +287,44 @@ def dump_jsonl(
         stream.write("\n")
         count += 1
     return count
+
+
+def dump_jsonl_split(
+    records: Iterable[Record],
+    outdir: str,
+    *,
+    key: Callable[[Record], str],
+    prefix: str = "",
+    suffix: str = ".jsonl",
+    compress: bool = False,
+    ensure_ascii: bool = False,
+) -> dict[str, int]:
+    """Write *records* to one JSONL file per ``key(record)`` under *outdir*,
+    each named ``{prefix}{key}{suffix}``. Returns ``{key: count}`` in
+    first-seen order; files are gzip-compressed when *compress*.
+
+    Routes a single parser pass into per-group files — e.g. the ``pfam`` parser
+    restricted to several accessions, each landing in its own file::
+
+        dump_jsonl_split(iter_records(p, accessions=ids), "out",
+                         key=lambda r: r["accession"], prefix="pfam_")
+    """
+    os.makedirs(outdir, exist_ok=True)
+    opener = gzip.open if compress else open
+    handles: dict[str, IO[str]] = {}
+    counts: dict[str, int] = {}
+    try:
+        for rec in records:
+            k = key(rec)
+            handle = handles.get(k)
+            if handle is None:
+                path = os.path.join(outdir, f"{prefix}{k}{suffix}")
+                handle = handles[k] = opener(path, "wt", encoding="utf-8")
+                counts[k] = 0
+            handle.write(rec.to_json(ensure_ascii=ensure_ascii))
+            handle.write("\n")
+            counts[k] += 1
+    finally:
+        for handle in handles.values():
+            handle.close()
+    return counts

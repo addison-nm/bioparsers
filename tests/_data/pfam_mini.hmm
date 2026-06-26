@@ -1,0 +1,11 @@
+HMMER3/f [3.4 | Aug 2023]
+NAME  TestFam_C
+ACC   PF99993.2
+LENG  5
+//
+HMMER3/f [3.4 | Aug 2023]
+NAME  TestFam_A
+ACC   PF99991.5
+DESC  Test family A description
+LENG  7
+//

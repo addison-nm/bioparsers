@@ -1,0 +1,73 @@
+# STOCKHOLM 1.0
+#=GF ID   TestFam_A
+#=GF AC   PF99991.5
+#=GF DE   Test family A description
+#=GF AU   Smith J;0000-0000-0000-0001
+#=GF AU   Doe A;0000-0000-0000-0002
+#=GF SE   ECOD:test
+#=GF GA   27.00 27.00;
+#=GF TC   27.10 27.10;
+#=GF NC   26.90 26.90;
+#=GF BM   hmmbuild HMM.ann SEED.ann
+#=GF SM   hmmsearch -E 1000 HMM pfamseq
+#=GF TP   Domain
+#=GF CL   CL0091
+#=GF PI   OldName_A;
+#=GF WK   Test_protein
+#=GF WK   Another_article
+#=GF RC   Comment before reference
+#=GF RN   [1]
+#=GF RM   12345678
+#=GF RT   "A long title that spans across two
+#=GF RT   physical lines in the file.";
+#=GF RA   Smith J., Doe A.,
+#=GF RA   Roe B.;
+#=GF RL   J. Test 1:1-10(2020).
+#=GF RN   [2]
+#=GF RM   87654321
+#=GF RT   Second reference title.
+#=GF RA   Jones K;
+#=GF RL   Test Lett. 2021;5:5-9.
+#=GF DR   SO; 0000417; polypeptide_domain;
+#=GF DR   INTERPRO; IPR000001;
+#=GF CC   This is the first line of the family description.
+#=GF CC   It continues on a second line.
+#=GF SQ   3
+#=GS SEQ1_TEST/1-5      AC A0A001AAA1.1
+#=GS SEQ2_TEST/10-16    AC A0A002BBB2.2
+#=GS SEQ3_TEST/3-7      AC A0A003CCC3.1
+SEQ1_TEST/1-5          MA.CD.E
+SEQ2_TEST/10-16        MAWCDEF
+SEQ3_TEST/3-7          M-WCD.E
+#=GC seq_cons          Mxhxxxx
+//
+# STOCKHOLM 1.0
+#=GF ID   TestFam_B
+#=GF AC   PF99992.1
+#=GF DE   Second test family
+#=GF AU   Roe B;0000-0000-0000-0003
+#=GF GA   25.00 25.00;
+#=GF TC   25.50 25.50;
+#=GF NC   24.90 24.90;
+#=GF TP   Family
+#=GF CC   Short description.
+#=GF NE   PF99991;
+#=GF SQ   2
+#=GS SEQX_TEST/1-4    AC B0B001AAA1.1
+#=GS SEQY_TEST/2-6    AC B0B002BBB2.1
+SEQX_TEST/1-4         MKLP.
+SEQY_TEST/2-6         MKLPQ
+#=GR SEQX_TEST/1-4 pAS 99999
+#=GC seq_cons         xxxxx
+//
+# STOCKHOLM 1.0
+#=GF ID   TestFam_C
+#=GF AC   PF99993.2
+#=GF GA   20.00 20.00;
+#=GF TC   20.10 20.10;
+#=GF NC   19.90 19.90;
+#=GF SQ   1
+#=GS SEQZ_TEST/5-9    AC C0C001AAA1.1
+SEQZ_TEST/5-9         VWMYK
+#=GC seq_cons         xxxxx
+//

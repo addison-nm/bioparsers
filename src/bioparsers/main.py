@@ -23,14 +23,19 @@ import os
 import sys
 from typing import Callable, Iterator
 
-from bioparsers.parsers import ParseError, Record, dump_jsonl
-from bioparsers.parsers import uniprot_dat
+from bioparsers.parsers import ParseError, Record, dump_jsonl, dump_jsonl_split
+from bioparsers.parsers import pfam_fasta, pfam_stockholm, uniprot_dat
 
 #: Subcommand name -> ``iter_records`` callable for that database. Adding a
 #: parser is one entry here; the subcommand and its arguments are generated.
 _PARSERS: dict[str, Callable[[str], Iterator[Record]]] = {
     "uniprot": uniprot_dat.iter_records,
+    "pfam": pfam_stockholm.iter_records,
+    "pfam-fasta": pfam_fasta.iter_records,
 }
+
+#: Subcommands that accept a repeatable ``--pfam-id`` family filter.
+_PFAM_FILTERABLE = {"pfam", "pfam-fasta"}
 
 
 def parse_args(argv):
@@ -58,7 +63,45 @@ def parse_args(argv):
             help="print a record-count heartbeat to stderr every N records "
                  "(default 100000 when given with no value)",
         )
+        if name in _PFAM_FILTERABLE:
+            p.add_argument(
+                "--pfam-id", action="append", default=None, metavar="PFXXXXX",
+                help="restrict to this Pfam accession (repeatable); scanning "
+                     "stops once all requested families are found",
+            )
+        if name == "pfam":
+            p.add_argument(
+                "--with-member-accessions", action="store_true",
+                help="include the per-member list (accession/name/region); "
+                     "omitted by default since num_sequences gives the count",
+            )
+            p.add_argument(
+                "--with-member-sequences", action="store_true",
+                help="attach each member's ungapped sequence, derived from the "
+                     "alignment and validated against its region span (implies "
+                     "--with-member-accessions)",
+            )
+            p.add_argument(
+                "--join", action="store_true",
+                help="with --pfam-id, write one unioned stream to -o/stdout; "
+                     "default is one file per family, with -o naming the output "
+                     "directory (pfam_<accession>.jsonl)",
+            )
     return parser.parse_args(argv)
+
+
+def _parser_kwargs(args) -> dict:
+    """Build the parser-specific keyword arguments for ``iter_records`` from the
+    parsed CLI args (only the Pfam parsers currently take any)."""
+    kwargs: dict = {}
+    if args.parser in _PFAM_FILTERABLE and getattr(args, "pfam_id", None):
+        kwargs["accessions"] = args.pfam_id
+    if args.parser == "pfam":
+        if getattr(args, "with_member_accessions", False):
+            kwargs["with_member_accessions"] = True
+        if getattr(args, "with_member_sequences", False):
+            kwargs["with_member_sequences"] = True
+    return kwargs
 
 
 def _with_progress(records: Iterator[Record], every: int) -> Iterator[Record]:
@@ -91,27 +134,50 @@ def run(
     output_path: str | None,
     progress: int | None = None,
     compress: bool = False,
+    parser_kwargs: dict | None = None,
+    split: bool = False,
 ) -> int:
     """Parse *input_path* with the named parser and write JSONL to
     *output_path* (or stdout when None), gzip-compressed when *compress*.
     Returns the record count.
 
-    When *progress* is a positive int, a heartbeat is printed to stderr
-    every *progress* records. Propagates ``ParseError`` from the parser;
-    ``main`` turns it into a non-zero exit.
+    *parser_kwargs* are forwarded to the parser's ``iter_records`` (e.g. the
+    ``pfam`` parser's ``accessions`` / ``with_member_sequences``). With *split*
+    (``pfam`` extraction without ``--join``), each family is written to its own
+    ``pfam_<accession>.jsonl`` file under the *output_path* directory (default
+    cwd) instead of a single stream. When *progress* is a positive int, a
+    heartbeat is printed to stderr every *progress* records. Propagates
+    ``ParseError`` from the parser; ``main`` turns it into a non-zero exit.
     """
     iter_records = _PARSERS[parser_name]
-    records = iter_records(input_path)
+    records = iter_records(input_path, **(parser_kwargs or {}))
     if progress:
         records = _with_progress(records, progress)
+    if split:
+        outdir = output_path or "."
+        suffix = ".jsonl.gz" if compress else ".jsonl"
+        counts = dump_jsonl_split(
+            records, outdir, key=lambda r: r["accession"],
+            prefix="pfam_", suffix=suffix, compress=compress,
+        )
+        for acc, n in counts.items():
+            print(f"  {n} -> {os.path.join(outdir, f'pfam_{acc}{suffix}')}",
+                  file=sys.stderr)
+        return sum(counts.values())
     with _open_output(output_path, compress) as handle:
         return dump_jsonl(records, handle)
 
 
 def main(argv=None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    split = bool(
+        args.parser == "pfam"
+        and getattr(args, "pfam_id", None)
+        and not getattr(args, "join", False)
+    )
     try:
-        count = run(args.parser, args.input, args.output, args.progress, args.gzip)
+        count = run(args.parser, args.input, args.output, args.progress,
+                    args.gzip, _parser_kwargs(args), split=split)
     except ParseError as exc:
         print(f"bioparsers: {exc}", file=sys.stderr)
         return 1
