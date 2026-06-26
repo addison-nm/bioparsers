@@ -26,8 +26,9 @@ Field extraction (CC-comment fields are lists of all blocks, evidence-stripped):
 
 FAMILY NAMES require external Pfam metadata (PF accession -> full family
 name, e.g. PF00018 -> "SH3 domain"), which a parsed UniProt record does not
-carry. Pass ``--pfam-names map.json`` (a JSON object {PF: name}) to include
-them; otherwise the FAMILY NAMES field is omitted.
+carry. Pass ``--pfam-names map.tsv`` (a two-column ``PF<TAB>name`` TSV, as
+written by ``scripts/parse_pfam_names.sh``) to include them; otherwise the
+FAMILY NAMES field is omitted.
 
 Usage (filter Swiss-Prot JSONL to the SH3 Pfam, one file):
     python _recipes/build_swissprot_legacy_by_pfam.py outputs/uniprot_sprot.jsonl \\
@@ -35,7 +36,6 @@ Usage (filter Swiss-Prot JSONL to the SH3 Pfam, one file):
 """
 
 import argparse
-import json
 import re
 from typing import Iterable, Iterator
 
@@ -290,8 +290,9 @@ def parse_args(argv=None):
     p.add_argument("--gzip", action="store_true", help="gzip the output")
     p.add_argument("--description", default=None,
                    help="free-text note recorded in each output's build manifest")
-    p.add_argument("--pfam-names", default=None, metavar="JSON",
-                   help="JSON map {PF accession: family name} to fill FAMILY NAMES")
+    p.add_argument("--pfam-names", default=None, metavar="TSV",
+                   help="two-column TSV (PF accession<TAB>family name) to fill "
+                        "FAMILY NAMES")
     p.add_argument("--min-length", type=int, default=0)
     return p.parse_args(argv)
 
@@ -300,8 +301,14 @@ def main(argv=None):
     args = parse_args(argv)
     pfam_names = None
     if args.pfam_names:
+        pfam_names = {}
         with open(args.pfam_names) as f:
-            pfam_names = json.load(f)
+            for line in f:
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                accession, _, name = line.partition("\t")
+                pfam_names[accession] = name
     builder = SwissProtLegacyBuilder(min_length=args.min_length,
                                      pfam_family_names=pfam_names)
     run_by_pfam(builder, args.input, args.pfam_ids, args.output,
