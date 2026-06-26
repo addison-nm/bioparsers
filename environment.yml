@@ -6,6 +6,3 @@ dependencies:
   - pip
   - pip:
     - -e .[dev]
-    # .  # bare minimum
-    # - .[dev,notebook]  # include optional dependencies
-    # - -e .[dev,notebook]  # optional dependencies in editing mode
