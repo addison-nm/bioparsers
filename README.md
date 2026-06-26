@@ -7,19 +7,16 @@ faithful, typed Python records.
 
 `bioparsers` has two layers:
 
-- **`parsers`** — the faithful parse layer: raw file in → structured
-  `Record` out. Deliberately scope-limited; it invents no schema or prose
-  and knows nothing about downstream use.
+- **`parsers`** — the faithful parse layer: raw file inputs and structured
+  `Record` outputs.
 - **`builders`** — an optional dataset layer that composes *curated
-  datasets* from the parsed JSONL (select, clean, project). It is kept
-  strictly separate so the parse layer stays pure.
+  datasets* from the parsed JSONL. It is kept strictly separate so the parse 
+  layer stays pure.
 
 Parser design principles:
 
 - **Faithful capture** — if the source provides a value, capture it as
-  written with minimal edits; no invented schema or prose. (Trailing `;` 
-  field-terminators are stripped; trailing `.` is preserved, since it 
-  is often part of the data.)
+  written with minimal edits; no invented schema or prose.
 - **Fail loud** — truncated or corrupt input raises `ParseError` rather
   than returning a silently short result.
 - **One executable schema per parser** — each parser subclasses `Record`
@@ -31,12 +28,12 @@ Implemented:
 | Database | Module | Record |
 |---|---|---|
 | UniProtKB Swiss-Prot / TrEMBL `.dat` | `bioparsers.parsers.uniprot_dat` | `UniProtRecord` |
-
-Planned: Pfam Stockholm, ExPASy `enzyme.dat`, BRENDA, SMART.
+| Pfam-A Stockholm (`Pfam-A.full`) | `bioparsers.parsers.pfam_stockholm` | `PfamRecord` |
+| Pfam-A member FASTA (`Pfam-A.fasta`) | `bioparsers.parsers.pfam_fasta` | `PfamFastaRecord` |
 
 ## Setup
 
-Requires Python 3.10+ and a single runtime dependency (`biopython`).
+Requires Python 3.12+ and a single runtime dependency (`biopython`).
 
 With conda (in-tree env at `./env`):
 
@@ -53,7 +50,12 @@ pip install -e '.[dev]'
 
 ## Usage
 
-### Library
+### Parsers
+
+The parse layer reads a flat-file into faithful `Record`s — use it as a library
+or through the `bioparsers` console script.
+
+#### Library
 
 ```python
 from bioparsers.parsers.uniprot_dat import iter_records
@@ -72,7 +74,26 @@ A `Record` is a dict-backed field-bag: access fields by attribute
 (`record.sequence`) or item (`record["sequence"]`), and serialize with
 `record.as_dict()` or `record.to_json()`.
 
-### Command line
+The Pfam parsers work the same way. `pfam_stockholm` yields one `PfamRecord`
+per family from `Pfam-A.full`; pass `accessions=` to extract only certain
+families (scanning stops once they are found) and `with_member_sequences=True`
+to attach each member's sequence. `pfam_fasta` yields one `PfamFastaRecord` per
+member sequence from the lighter `Pfam-A.fasta`.
+
+```python
+from bioparsers.parsers import pfam_stockholm, pfam_fasta
+
+# Family metadata + member sequences for selected families:
+for fam in pfam_stockholm.iter_records("Pfam-A.full.gz", accessions=["PF00018"],
+                                       with_member_sequences=True):
+    print(fam.accession, fam.name, len(fam.members))
+
+# Redundancy-reduced member sequences (one record per sequence):
+for member in pfam_fasta.iter_records("Pfam-A.fasta.gz", accessions=["PF00018"]):
+    print(member.accession, member.region, member.sequence)
+```
+
+#### Command line
 
 The `bioparsers` console script parses a flat-file to JSONL (one compact
 object per line) on stdout, or to a file with `-o`. Input may be plain
@@ -90,7 +111,22 @@ record-count heartbeat on stderr (every N records, default 100000). The
 record count is reported on stderr; corrupt or truncated input exits
 non-zero with a message on stderr.
 
-### Dataset builders
+The `pfam` and `pfam-fasta` subcommands add Pfam options. `--pfam-id`
+(repeatable) restricts to given families (scanning stops once found). For
+`pfam`, `--with-member-accessions` / `--with-member-sequences` opt the
+per-member list into the output, and multiple `--pfam-id` write one file per
+family (`pfam_<accession>.jsonl`) under the `-o` directory unless `--join` is
+given:
+
+```bash
+bioparsers pfam Pfam-A.full.gz > pfam.jsonl                       # family metadata
+bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --pfam-id PF07714 \
+    --with-member-sequences -o out_dir/                           # one file per family
+bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --join > sh3.jsonl
+bioparsers pfam-fasta Pfam-A.fasta.gz --pfam-id PF00018 > sh3_members.jsonl
+```
+
+### Builders
 
 `bioparsers.builders` is a small framework for turning parsed JSONL into
 curated datasets. The framework itself is database-agnostic: the `Builder`
