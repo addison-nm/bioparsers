@@ -1,5 +1,5 @@
 install:
-	pip install -e .[dev,notebook]
+	python -m pip install -e '.[dev]'
 
 test:
-	pytest
+	python -m pytest tests
