@@ -8,7 +8,7 @@ into a curated dataset — selecting, cleaning, and projecting fields.
 It provides only the *framework*:
 
 - :class:`Builder` — the abstract base every composition subclasses. Each
-  concrete builder declares a versioned ``name`` (``uniprot_<form>_v<n>``)
+  concrete builder declares a stable ``name`` (e.g. ``swissprot_legacy``)
   and a long-form ``description`` documenting its output record form, both
   enforced at definition time.
 - :func:`load_jsonl` / :func:`write_jsonl` / :func:`jsonl_writer` /
@@ -37,7 +37,7 @@ framework's io) to compose a dataset::
                     yield {"accession": rec["primary_accession"],
                            "sequence": rec["sequence"], "function": fn}
 
-    write_jsonl(MyBuilder().build(load_jsonl("outputs/uniprot_sprot.jsonl")),
+    write_jsonl(MyBuilder().build(load_jsonl("data/uniprot_sprot.jsonl")),
                 "outputs/my.jsonl")
 """
 

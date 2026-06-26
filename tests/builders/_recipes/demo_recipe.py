@@ -1,16 +1,10 @@
 #!/usr/bin/env python
-"""Build Recipe: build ``swissprot_demo_fields`` records, filtered by Pfam domain.
+"""Test-fixture recipe — a self-contained copy of a builder recipe.
 
-A worked example (the one demo recipe) of the `bioparsers.builders` framework:
-define a custom ``Builder`` (below), then use it with the framework's filters,
-helpers, and streaming I/O to compose a dataset from parsed Swiss-Prot JSONL.
-
-Keeps only entries carrying one or more specified Pfam domains, then runs
-them through ``SwissProtDemoFields``. By default writes one output file per
-Pfam ID; with ``--join`` writes a single union file (no duplication).
-
-    python recipes/build_swissprot_demo_fields_by_pfam.py data/uniprot_sprot.jsonl \\
-        --pfam-ids PF00018 -o outputs/swissprot_demo.jsonl
+Kept under ``tests/`` so the suite exercises a representative ``Builder`` and
+the ``run_by_pfam`` CLI **without depending on the live scripts in
+``recipes/``** (which are user-editable and get renamed/reorganized). Mirror
+the recipe you actually want to cover here; this copy may drift from it.
 """
 
 import argparse
@@ -35,13 +29,7 @@ class SwissProtDemoFields(Builder):
           }
         }
 
-    ``fields`` groups free-text annotations: ``name`` is the full
-    recommended name (SubName fallback); ``function`` and ``domains`` are
-    the entry's FUNCTION and DOMAIN comment text respectively, with
-    ``{ECO:...}`` evidence and ``(PubMed:...)`` citations removed.
-    ``domains`` is the curated CC ``DOMAIN`` comment (a prose description of
-    the entry's domain architecture), NOT feature-table or Pfam data. Empty
-    fields are omitted, so ``fields`` may be empty for a sparse entry.
+    Empty fields are omitted, so ``fields`` may be empty for a sparse entry.
 
     Options:
       - ``reviewed_only``: keep only Swiss-Prot (Reviewed) entries.
@@ -84,12 +72,11 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=SwissProtDemoFields.description)
     p.add_argument("input", help="parsed Swiss-Prot JSONL (plain or .gz)")
     p.add_argument("--pfam-ids", nargs="+", required=True, metavar="PFAM_ID",
-                   dest="pfam_ids", help="one or more Pfam accessions, e.g. PF00199")
+                   dest="pfam_ids", help="one or more Pfam accessions")
     p.add_argument("-o", "--output", required=True,
-                   help="output JSONL path; in per-ID mode the Pfam ID is "
-                        "inserted before the extension")
+                   help="output JSONL path; per-ID mode inserts the Pfam ID")
     p.add_argument("--join", action="store_true",
-                   help="write a single union file instead of one file per Pfam ID")
+                   help="write a single union file instead of one per Pfam ID")
     p.add_argument("--gzip", action="store_true", help="gzip the output")
     p.add_argument("--description", default=None,
                    help="free-text note recorded in each output's build manifest")
@@ -100,10 +87,8 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    builder = SwissProtDemoFields(
-        reviewed_only=args.reviewed_only,
-        min_length=args.min_length,
-    )
+    builder = SwissProtDemoFields(reviewed_only=args.reviewed_only,
+                                  min_length=args.min_length)
     run_by_pfam(builder, args.input, args.pfam_ids, args.output,
                 join=args.join, gzip=args.gzip, description=args.description)
 

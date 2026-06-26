@@ -1,4 +1,6 @@
-"""End-to-end smoke tests for the by-pfam recipe scripts (run as subprocess)."""
+"""End-to-end smoke tests for the by-pfam runner, run as a subprocess against a
+self-contained test-fixture recipe (``tests/builders/_recipes/``) — so the
+suite does not depend on the live scripts in ``recipes/``."""
 
 import json
 import os
@@ -13,7 +15,7 @@ from bioparsers.parsers.uniprot_dat import iter_records
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SPROT = os.path.join(REPO, "tests", "_data", "uniprot_sprot_mini.dat")
-RECIPE = os.path.join(REPO, "recipes", "build_swissprot_demo_fields_by_pfam.py")
+RECIPE = os.path.join(os.path.dirname(__file__), "_recipes", "demo_recipe.py")
 
 # Two Pfam IDs present in the mini Swiss-Prot fixture (14 and 6 entries).
 PFAM_A, PFAM_B = "PF21947", "PF02245"
@@ -59,7 +61,7 @@ class TestByPfamRecipe:
 
         # each output has a build-manifest sidecar
         ma = json.loads((tmp_path / f"ds.{PFAM_A}.jsonl.manifest.json").read_text())
-        assert ma["builder"]["name"] == "uniprot_fields_demo"
+        assert ma["builder"]["name"] == "swissprot_demo_fields"
         assert ma["description"] == "smoke test"
         assert ma["record_count"] == len(_accs_with(recs, PFAM_A))
         assert ma["pfam_ids"] == [PFAM_A]

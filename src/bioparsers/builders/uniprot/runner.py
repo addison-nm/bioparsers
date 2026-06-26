@@ -10,8 +10,8 @@ The per-ID mode makes a single streaming pass over the (large) input,
 routing each record to every matching ID's output file, so an entry that
 carries several of the requested domains lands in each of their files.
 
-This is the shared orchestration behind the ``build_uniprot_by_pfam_*``
-recipes; it lives in the package so those scripts import it normally
+This is the shared orchestration behind the ``build_*_by_pfam`` recipes; it
+lives in the package so those scripts import it normally
 (``from bioparsers.builders.uniprot import run_by_pfam``) rather than
 reaching across directories.
 """
@@ -26,7 +26,7 @@ from bioparsers.builders.uniprot.helpers import pfam_ids
 
 def with_pfam_suffix(path: str, pfam_id: str) -> str:
     """Insert *pfam_id* before the extension of *path*:
-    ``out/sprot_flat.jsonl`` + ``PF00069`` -> ``out/sprot_flat.PF00069.jsonl``
+    ``out/sprot.jsonl`` + ``PF00069`` -> ``out/sprot.PF00069.jsonl``
     (``.jsonl.gz`` is preserved as a unit).
     """
     head, base = os.path.split(path)

@@ -147,9 +147,9 @@ mirroring how each parser subclasses `Record`). Builders are streaming-first
 from bioparsers.builders import Builder, load_jsonl, write_jsonl
 from bioparsers.builders.uniprot import helpers
 
-class UniprotFlat(Builder):
+class SwissProtFunction(Builder):
     """Flat {accession, sequence, function} records."""
-    name = "uniprot_flat_demo"
+    name = "swissprot_function_v1"
     def build(self, records):
         for rec in records:
             fn = helpers.joined_comment(rec, "FUNCTION")   # cleaned, evidence-free
@@ -157,8 +157,8 @@ class UniprotFlat(Builder):
                 yield {"accession": rec["primary_accession"],
                        "sequence": rec["sequence"], "function": fn}
 
-records = load_jsonl("outputs/uniprot_sprot.jsonl")        # streaming, gz-aware
-n = write_jsonl(UniprotFlat().build(records), "outputs/sprot_flat.jsonl")
+records = load_jsonl("data/uniprot_sprot.jsonl")          # streaming, gz-aware
+n = write_jsonl(SwissProtFunction().build(records), "outputs/sprot_function.jsonl")
 ```
 
 For reproducibility, `write_manifest(builder, path, ...)` writes a JSON
@@ -168,8 +168,8 @@ count, a custom `description`):
 
 ```python
 from bioparsers.builders import write_manifest
-write_manifest(UniprotFlat(), "outputs/sprot_flat.jsonl.manifest.json",
-               output="outputs/sprot_flat.jsonl", record_count=n,
+write_manifest(SwissProtFunction(), "outputs/sprot_function.jsonl.manifest.json",
+               output="outputs/sprot_function.jsonl", record_count=n,
                description="flat sequence/function pairs")
 ```
 
@@ -179,8 +179,9 @@ parsed data, and writing a `<output>.manifest.json` sidecar for each output:
 
 | Recipe builder | Output record |
 |---|---|
-| `uniprot_flat_demo` | flat `{accession, entry_name, length, sequence, name?, function?}` |
-| `uniprot_fields_demo` | nested `{accession, sequence, fields:{name?, function?, domains?}}` |
+| `swissprot_legacy` | legacy-style `caption` + the structured `fields` it is built from |
+| `swissprot_caption_fields` | raw `fields` + a `caption_fields` dict (cleaned, per-field text) |
+| `swissprot_demo_fields` | nested `{accession, sequence, fields:{name?, function?, domains?}}` |
 
 Optional fields are omitted when the source has no value.
 

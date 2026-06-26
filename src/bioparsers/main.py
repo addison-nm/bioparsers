@@ -9,9 +9,13 @@ rather than producing a silently short result.
 
     bioparsers uniprot uniprot_sprot.dat.gz > out.jsonl
     bioparsers uniprot in.dat -o out.jsonl
+    bioparsers pfam Pfam-A.full.gz -o pfam.jsonl
+    bioparsers pfam-fasta Pfam-A.fasta.gz --pfam-id PF00018 > sh3_members.jsonl
 
-JSONL is currently the only emission format (mirroring the library's
-``dump_jsonl`` helper); CSV/Parquet are deliberately out of scope.
+The ``pfam``/``pfam-fasta`` subcommands add Pfam-specific options (``--pfam-id``,
+``--with-member-accessions`` / ``--with-member-sequences``, ``--join``); see
+``--help``. JSONL is currently the only emission format (mirroring the
+library's ``dump_jsonl`` helper); CSV/Parquet are deliberately out of scope.
 """
 
 from __future__ import annotations

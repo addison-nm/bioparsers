@@ -14,7 +14,7 @@ export outdir=/path/to/storage
 ./scripts/parse_swissprot.sh
 
 # uniprot_trembl.jsonl.gz -> <outdir>/uniprot_trembl.jsonl.gz (143 GB)
-./scripts/parse_trembl.sh ${outdir}/trembl.jsonl.gz --link
+./scripts/parse_trembl.sh ${outdir}/uniprot_trembl.jsonl.gz --link
 
 # pfam.jsonl.gz (7.0 MB)
 ./scripts/parse_pfam_full.sh

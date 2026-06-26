@@ -1,14 +1,15 @@
-"""Tests for the recipe builders over real mini-fixture records.
+"""Tests for a representative recipe builder over real mini-fixture records.
 
-The concrete builders live in the ``recipes/`` scripts; ``conftest.py`` puts
-that directory on ``sys.path`` so they can be imported here.
+The builder under test is a self-contained copy in ``tests/builders/_recipes/``
+(``conftest.py`` adds that dir to ``sys.path``), so the suite does not depend
+on the live scripts in ``recipes/``.
 """
 
 import os
 
 import pytest
 
-from build_swissprot_demo_fields_by_pfam import UniprotFields
+from demo_recipe import SwissProtDemoFields
 
 from bioparsers.builders.base import Builder
 from bioparsers.parsers.uniprot_dat import iter_records
@@ -31,7 +32,7 @@ def trembl_dicts():
 class TestRecipeBuilders:
 
     @pytest.mark.parametrize("cls,name", [
-        (UniprotFields, "uniprot_fields_demo"),
+        (SwissProtDemoFields, "swissprot_demo_fields"),
     ])
     def test_are_builders_with_name_and_description(self, cls, name):
         assert issubclass(cls, Builder)
@@ -39,17 +40,17 @@ class TestRecipeBuilders:
         assert cls.description.strip()  # long-form description present
 
 
-class TestUniprotFields:
+class TestSwissProtDemoFields:
 
     def test_shape_and_required_keys(self, sprot_dicts):
-        out = list(UniprotFields().build(sprot_dicts))
+        out = list(SwissProtDemoFields().build(sprot_dicts))
         assert len(out) == 100
         for r in out:
             assert set(r) == {"accession", "sequence", "fields"}
             assert isinstance(r["fields"], dict)
 
     def test_fields_omit_empty_values(self, sprot_dicts):
-        out = UniprotFields().build(sprot_dicts)
+        out = SwissProtDemoFields().build(sprot_dicts)
         for r in out:
             for v in r["fields"].values():
                 assert v != ""  # only populated keys present
@@ -60,7 +61,7 @@ class TestUniprotFields:
         for rec in sprot_dicts + trembl_dicts:
             dom = [c["text"] for c in rec["comments"] if c["topic"] == "DOMAIN"]
             if dom:
-                out = next(UniprotFields().build([rec]))
+                out = next(SwissProtDemoFields().build([rec]))
                 assert "domains" in out["fields"]
                 assert "ECO:" not in out["fields"]["domains"]
                 break

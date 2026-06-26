@@ -19,8 +19,8 @@ databases/
 │   └── reldate.txt
 └── pfam/
     ├── Pfam-A.hmm.gz             # HMM profiles — family name table (parsed)
-    ├── Pfam-A.full.gz            # (optional) full alignments
-    ├── Pfam-A.fasta.gz           # (optional) sequences
+    ├── Pfam-A.full.gz            # full alignments — families + members (parsed)
+    ├── Pfam-A.fasta.gz           # member sequences, NR                 (parsed)
     └── relnotes.txt
 ```
 
@@ -30,10 +30,12 @@ Which files are actually read:
 |---|---|
 | `bioparsers uniprot` (Swiss-Prot) | `swissprot/uniprot_sprot.dat.gz` |
 | `bioparsers uniprot` (TrEMBL) | `trembl/uniprot_trembl.dat.gz` |
-| `bioparsers.parsers.pfam_stockholm` (name table) | `pfam/Pfam-A.hmm.gz` |
+| `bioparsers pfam` (families) | `pfam/Pfam-A.full.gz` |
+| `bioparsers pfam-fasta` (members) | `pfam/Pfam-A.fasta.gz` |
+| `family_name_map` (name table) | `pfam/Pfam-A.hmm.gz` |
 
 The scripts in [`scripts/`](../scripts/) (`parse_swissprot.sh`,
-`parse_trembl.sh`) assume these paths.
+`parse_trembl.sh`, `parse_pfam_*.sh`) assume these paths.
 
 ## Setup
 

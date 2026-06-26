@@ -9,7 +9,7 @@ unit.
 Every concrete builder must declare two things, enforced at
 subclass-definition time (fail-loud, mirroring ``Record``/``SchemaError``):
 
-- ``name``: a stable, versioned identifier (e.g. ``"uniprot_flat_demo"``).
+- ``name``: a stable, versioned identifier (e.g. ``"swissprot_legacy"``).
 - ``description``: a long-form text description that documents the shape
   of each output record. If a subclass does not set ``description``
   explicitly, its class docstring is used. A builder with neither is a
@@ -35,7 +35,7 @@ class Builder(ABC):
     :meth:`build`.
     """
 
-    #: Stable, versioned identifier, e.g. ``"uniprot_flat_demo"``.
+    #: Stable, versioned identifier, e.g. ``"swissprot_legacy"``.
     name: ClassVar[str] = ""
     #: Long-form description of the output record form. Defaults to the
     #: class docstring when not set explicitly.
