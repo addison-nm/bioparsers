@@ -13,7 +13,7 @@ from bioparsers.parsers.uniprot_dat import iter_records
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SPROT = os.path.join(REPO, "tests", "_data", "uniprot_sprot_mini.dat")
-RECIPE = os.path.join(REPO, "recipes", "build_uniprot_by_pfam_flat_demo.py")
+RECIPE = os.path.join(REPO, "recipes", "build_swissprot_demo_fields_by_pfam.py")
 
 # Two Pfam IDs present in the mini Swiss-Prot fixture (14 and 6 entries).
 PFAM_A, PFAM_B = "PF21947", "PF02245"
@@ -32,8 +32,9 @@ def _accs_with(recs, pid):
 
 
 def _run(args, tmp):
-    # --no-require-function so every matching entry is emitted (deterministic).
-    cmd = [sys.executable, RECIPE, *args, "--no-require-function"]
+    # The fields demo emits every matching entry (no extra filter), so the
+    # output accession set is deterministic.
+    cmd = [sys.executable, RECIPE, *args]
     subprocess.run(cmd, cwd=REPO, check=True, capture_output=True, text=True)
 
 
@@ -41,7 +42,7 @@ def _read_accs(path):
     return {json.loads(l)["accession"] for l in open(path)}
 
 
-class TestByPfamFlatRecipe:
+class TestByPfamRecipe:
 
     def test_per_id_writes_one_file_each(self, input_jsonl, tmp_path):
         src, recs = input_jsonl
@@ -58,7 +59,7 @@ class TestByPfamFlatRecipe:
 
         # each output has a build-manifest sidecar
         ma = json.loads((tmp_path / f"ds.{PFAM_A}.jsonl.manifest.json").read_text())
-        assert ma["builder"]["name"] == "uniprot_flat_demo"
+        assert ma["builder"]["name"] == "uniprot_fields_demo"
         assert ma["description"] == "smoke test"
         assert ma["record_count"] == len(_accs_with(recs, PFAM_A))
         assert ma["pfam_ids"] == [PFAM_A]

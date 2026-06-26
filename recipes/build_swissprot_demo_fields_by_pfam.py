@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Recipe: build ``uniprot_fields_demo`` records, filtered by Pfam domain.
+"""Build Recipe: build ``uniprot_fields_demo`` records, filtered by Pfam domain.
 
 A worked example of the `bioparsers.builders` framework: define a custom
 ``Builder`` (below), then use it with the framework's filters, helpers, and
@@ -9,8 +9,8 @@ Keeps only entries carrying one or more specified Pfam domains, then runs
 them through ``UniprotFields``. By default writes one output file per
 Pfam ID; with ``--join`` writes a single union file (no duplication).
 
-    python recipes/build_uniprot_by_pfam_fields_demo.py outputs/uniprot_sprot.jsonl \\
-        --pfam-ids PF00199 -o outputs/sprot_fields.jsonl --reviewed-only
+    python recipes/build_uniprot_by_pfam_fields_demo.py data/uniprot_sprot.jsonl \\
+        --pfam-ids PF00018 -o outputs/swissprot_demo.jsonl
 """
 
 import argparse
@@ -18,7 +18,6 @@ from typing import Iterable, Iterator
 
 from bioparsers.builders import Builder
 from bioparsers.builders.uniprot import filters, helpers, run_by_pfam
-
 
 
 class UniprotFields(Builder):
