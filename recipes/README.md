@@ -1,17 +1,15 @@
 # recipes
 
 Runnable demonstrations of the `bioparsers.builders` layer — each script
-turns parsed UniProt JSONL (produced by `scripts/parse_*.sh`) into one
-curated dataset, showing the builder API in use.
+turns parsed into a curated dataset.
 
-These recipes select entries by **Pfam domain** and then project them with
+These recipes select entries by Pfam domain and then project them with
 a builder. The shared Pfam runner (`run_by_pfam`) and the UniProt field
 logic live in the package under `bioparsers.builders.uniprot`; the
 database-agnostic framework lives in `bioparsers.builders`.
 
 | Recipe | Builder | Output record |
 |---|---|---|
-| `build_uniprot_by_pfam_flat_demo.py` | `uniprot_flat_demo` | flat `{accession, entry_name, length, sequence, name?, function?}` |
 | `build_uniprot_by_pfam_fields_demo.py` | `uniprot_fields_demo` | nested `{accession, sequence, fields:{name?, function?, domains?}}` |
 
 Optional text fields are omitted when the source entry has no value.
@@ -50,3 +48,19 @@ Every output file gets a `<output>.manifest.json` reproducibility sidecar
 recording the bioparsers version + git state, the builder's name and
 description, the environment, the Pfam IDs, and the record count. Pass
 `--description "..."` to add a free-text note to each manifest.
+
+## Examples
+
+```bash
+python recipes/build_swissprot_legacy_by_pfam.py data/uniprot_sprot.jsonl.gz \
+    --pfam-ids PF00018 \
+    --pfam-names data/pfam_names.tsv \
+    -o outputs/swissprot_legacy_SH3.jsonl
+```
+
+```bash
+python recipes/build_swissprot_caption_fields_by_pfam.py data/uniprot_sprot.jsonl.gz \
+    --pfam-ids PF00018 \
+    --pfam-names data/pfam_names.tsv \
+    -o outputs/swissprot_caption_fields_SH3.jsonl
+```

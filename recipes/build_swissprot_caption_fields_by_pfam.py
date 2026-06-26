@@ -1,39 +1,40 @@
 #!/usr/bin/env python
-"""Build Recipe: Capture fields used in legacy BioM3 SwissProt captions, by Pfam.
+"""Build Recipe: Capture the full Swiss-Prot annotation field set, by Pfam.
 
-This reproduces the SwissProt section of the legacy BioM3 finetuning dataset
-``FINAL_SH3_all_dataset_with_prompts.csv`` (columns: primary_Accession,
-protein_sequence, [final]text_caption, pfam_label) from *parsed* UniProt
-JSONL, using the bioparsers.builders framework.
+A sibling of ``build_swissprot_legacy_by_pfam.py``. Where that recipe trims to
+the legacy caption field set and emits an assembled ``[final]text_caption``,
+this one keeps the **full** set of fields we extract (including GENE ONTOLOGY)
+and does **not** assemble a caption. Instead each record carries:
 
-The ``SwissProtLegacyBuilder`` below maps each parsed UniProt record to the
-same annotation field set in the legacy dataset, and also composes a 
-legacy-style ``caption``:
+  - ``fields``: the raw extracted fields (per-CC-topic lists, etc.), exactly
+    as captured — the inputs, not a rendered string.
+  - ``caption_fields``: a parallel dict where each field is the *cleaned,
+    concatenated* string it would contribute to a caption (e.g. all DOMAIN
+    blocks joined; lineage / GO as a comma-joined list), with no ``LABEL:``
+    prefix and no caption assembly.
 
-    "PROTEIN NAME: <name>. FUNCTION: <...>. ... LINEAGE: The organism
-    lineage is <a, b, c>. FAMILY NAMES: Family names are <x, y, z>."
-
-This recreates approximately the SwissProt portion of the legacy dataset.
+This keeps the structured data and the caption-ready text side by side, so
+downstream callers can compose captions however they like.
 
 Field extraction (CC-comment fields are lists of all blocks, evidence-stripped):
   - PROTEIN NAME = DE RecName.full (SubName.full fallback) — single string.
   - Each CC topic (FUNCTION, DOMAIN, ...) = list of all its blocks.
   - CATALYTIC ACTIVITY = list of each block's ``Reaction=`` prose.
   - SUBCELLULAR LOCATION = list of each block's text before ``Note=`` (no trailing ".").
+  - GENE ONTOLOGY = list of GO cross-ref term text (aspect prefix stripped).
   - LINEAGE = list of OC taxa.
-  - The caption joins each field's blocks and removes {ECO:...} / (PubMed:NNNN).
 
-The FAMILY NAMES caption field requires external Pfam metadata (PF accession ->
-full family name, e.g. PF00018 -> "SH3 domain"), which a parsed UniProt record
-does not carry. ``--pfam-names`` (a two-column ``PF<TAB>name`` TSV, as written
-by ``scripts/parse_pfam_names.sh``) is required.
+The ``family_names`` caption field requires external Pfam metadata (PF
+accession -> full family name, e.g. PF00018 -> "SH3 domain"), which a parsed
+UniProt record does not carry. ``--pfam-names`` (a two-column ``PF<TAB>name``
+TSV, as written by ``scripts/parse_pfam_names.sh``) is required.
 
 Usage (filter Swiss-Prot JSONL to the SH3 Pfam, one file):
-    python recipes/build_swissprot_legacy_by_pfam.py \\
+    python recipes/build_swissprot_caption_fields_by_pfam.py \\
         data/uniprot_sprot.jsonl.gz \\
         --pfam-ids PF00018 \\
         --pfam-names data/pfam_names.tsv \\
-        -o outputs/swissprot_legacy_SH3.jsonl
+        -o outputs/swissprot_caption_fields_SH3.jsonl
 """
 
 import argparse
@@ -44,7 +45,7 @@ from bioparsers.builders import Builder
 from bioparsers.builders.uniprot import filters, helpers, run_by_pfam
 
 
-# (caption label, output field key) in the legacy caption order.
+# (caption-field label, output field key) — the full extracted set, in order.
 SPEC = [
     ("PROTEIN NAME", "protein_name"),
     ("FUNCTION", "function"),
@@ -63,6 +64,7 @@ SPEC = [
     ("INDUCTION", "induction"),
     ("DEVELOPMENTAL STAGE", "developmental_stage"),
     ("BIOTECHNOLOGY", "biotechnology"),
+    ("GENE ONTOLOGY", "gene_ontology"),
     ("LINEAGE", "lineage"),
 ]
 
@@ -86,7 +88,7 @@ _SIMPLE_TOPICS = {
     "BIOTECHNOLOGY": "biotechnology",
 }
 
-# Caption cleaning regexes, ported verbatim from biom3.dbio.caption for parity.
+# Cleaning regexes, ported verbatim from biom3.dbio.caption for parity.
 _PUBMED_RE = re.compile(r"\s*\(PubMed:\d+(?:,\s*PubMed:\d+)*\)")
 _EVIDENCE_RE = re.compile(r"\s*\{ECO:\d+.*?\}")
 _MULTI_DOT_RE = re.compile(r"\.(\s*\.)+")
@@ -125,14 +127,24 @@ def _full_name(rec):
     return None
 
 
+def _go_terms(rec):
+    out = []
+    for line in rec.get("cross_references", {}).get("GO", []):
+        parts = line.split(";")
+        if len(parts) >= 3:
+            desc = parts[2].strip().rstrip(".")
+            if len(desc) > 2 and desc[1] == ":":  # drop C:/F:/P: aspect prefix
+                desc = desc[2:]
+            out.append(desc)
+    return out
+
+
 def extract_fields(rec) -> dict:
-    """Map a parsed UniProt record to the legacy annotation field set.
+    """Map a parsed UniProt record to the full annotation field set.
 
     CC-comment fields are collected as **lists of all blocks** of that topic
     (not just the first), evidence-stripped. ``protein_name`` is a single
-    string; ``lineage`` is a list. Note: GENE ONTOLOGY is deliberately *not*
-    captured — the legacy Swiss-Prot caption SPEC does not include it (it is
-    absent from all 599 Swiss-Prot rows of the reference dataset).
+    string; ``gene_ontology`` and ``lineage`` are lists.
     """
     fields = {}
 
@@ -164,6 +176,10 @@ def extract_fields(rec) -> dict:
     if sublocs:
         fields["subcellular_location"] = sublocs
 
+    go = _go_terms(rec)
+    if go:
+        fields["gene_ontology"] = go
+
     lineage = rec.get("lineage")
     if lineage:
         fields["lineage"] = list(lineage)
@@ -171,35 +187,38 @@ def extract_fields(rec) -> dict:
     return fields
 
 
-def _caption_value(key, value) -> str:
-    """Render a field value to its caption string."""
-    if key == "lineage":
-        return "The organism lineage is " + ", ".join(value)
+def _field_text(key, value) -> str:
+    """Render a field value to its bare, concatenated caption text — no
+    ``LABEL:`` prefix and (unlike the legacy caption) no ``lineage`` preamble.
+    """
+    if key in ("lineage", "gene_ontology"):
+        return ", ".join(value)
     if isinstance(value, list):
         return " ".join(value)        # join all blocks of a CC topic
     return value
 
 
-def compose_caption(fields: dict, family_names=None) -> str:
-    """Compose a legacy-style caption from the (list-valued) extracted fields."""
-    parts = []
-    for label, key in SPEC:
+def caption_fields(fields: dict, family_names=None) -> dict:
+    """Build the ``{field: cleaned-concatenated-text}`` dict from the extracted
+    fields, in SPEC order. Each value is evidence/PubMed-stripped, with blocks
+    of a CC topic concatenated. ``family_names`` (from external Pfam metadata)
+    is added as ``family_names`` when supplied.
+    """
+    out = {}
+    for _, key in SPEC:
         value = fields.get(key)
         if not value:
             continue
-        val = _strip_pubmed(_strip_evidence(_caption_value(key, value))).rstrip(".")
-        if val:
-            parts.append(f"{label}: {val}")
+        text = _strip_pubmed(_strip_evidence(_field_text(key, value))).rstrip(".").strip()
+        if text:
+            out[key] = text
     if family_names:
-        parts.append("FAMILY NAMES: Family names are " + ", ".join(family_names))
-    caption = ". ".join(parts)
-    if caption and not caption.endswith("."):
-        caption += "."
-    return caption
+        out["family_names"] = ", ".join(family_names)
+    return out
 
 
-class SwissProtLegacyBuilder(Builder):
-    """Legacy BioM3 Swiss-Prot caption records.
+class SwissProtCaptionFieldsBuilder(Builder):
+    """Full Swiss-Prot annotation fields + caption-ready text, by Pfam.
 
     Output record::
 
@@ -207,37 +226,34 @@ class SwissProtLegacyBuilder(Builder):
           "accession": str,        # primary accession
           "sequence":  str,        # amino-acid sequence
           "pfam_ids":  [str],      # Pfam accessions from DR cross-refs
-          "caption":   str,        # legacy-style [final]text_caption
-          "fields": {              # populated annotation fields (include_fields)
-            "protein_name": str,         # single string
+          "fields": {              # raw extracted fields (the inputs)
+            "protein_name": str,
             "function": [str], "domain": [str], ...,   # ALL blocks per CC topic
-            "lineage": [str],            # OC taxa list
+            "gene_ontology": [str], "lineage": [str],
+          },
+          "caption_fields": {      # cleaned, concatenated text per field
+            "protein_name": str, "function": str, "domain": str, ...,
+            "family_names": str,   # from --pfam-names (required)
           }
         }
 
-    Unlike the legacy builder (which kept only the first block per CC topic),
-    every block of a topic is collected into a list. ``caption`` reproduces
-    the legacy ``SWISSPROT_SPEC`` format — each present field as
-    ``LABEL: value`` joined by ". ", with all blocks of a topic joined, and
-    evidence/PubMed stripped. FAMILY NAMES is appended only when
-    *pfam_family_names* (a {PF accession: full name} map) is supplied, since
-    family names come from external Pfam metadata, not the record.
+    No ``[final]text_caption`` is assembled — ``caption_fields`` holds each
+    field's caption-ready string (evidence/PubMed stripped, blocks joined,
+    no ``LABEL:`` prefix) so callers can compose captions as they wish.
 
     Options:
       - ``reviewed_only``: keep only Swiss-Prot (Reviewed) entries (default True).
       - ``min_length``: drop entries shorter than this many residues.
-      - ``pfam_family_names``: {PF: name} map enabling the FAMILY NAMES field.
-      - ``include_fields``: also emit the structured ``fields`` dict.
+      - ``pfam_family_names``: {PF: name} map enabling the family_names entry.
     """
 
-    name = "swissprot_legacy"
+    name = "swissprot_caption_fields"
 
     def __init__(self, *, reviewed_only: bool = True, min_length: int = 0,
-                 pfam_family_names: dict | None = None, include_fields: bool = True):
+                 pfam_family_names: dict | None = None):
         self.reviewed_only = reviewed_only
         self.min_length = min_length
         self.pfam_family_names = pfam_family_names
-        self.include_fields = include_fields
 
     def build(self, records: Iterable[dict]) -> Iterator[dict]:
         keep_len = filters.min_length(self.min_length)
@@ -253,19 +269,17 @@ class SwissProtLegacyBuilder(Builder):
                 family_names = [self.pfam_family_names.get(p, p) for p in pfam_ids]
 
             fields = extract_fields(rec)
-            out = {
+            yield {
                 "accession": rec.get("primary_accession"),
                 "sequence": rec.get("sequence"),
                 "pfam_ids": pfam_ids,
-                "caption": compose_caption(fields, family_names=family_names),
+                "fields": fields,
+                "caption_fields": caption_fields(fields, family_names=family_names),
             }
-            if self.include_fields:
-                out["fields"] = fields
-            yield out
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(description=SwissProtLegacyBuilder.description)
+    p = argparse.ArgumentParser(description=SwissProtCaptionFieldsBuilder.description)
     p.add_argument("input", help="parsed Swiss-Prot JSONL (plain or .gz)")
     p.add_argument("--pfam-ids", nargs="+", required=True, metavar="PFAM_ID",
                    dest="pfam_ids", help="one or more Pfam accessions, e.g. PF00018")
@@ -278,8 +292,8 @@ def parse_args(argv=None):
                    help="free-text note recorded in each output's build manifest")
     p.add_argument("--pfam-names", required=True, metavar="TSV",
                    help="two-column TSV (PF accession<TAB>family name), as written "
-                        "by scripts/parse_pfam_names.sh, to fill FAMILY NAMES "
-                        "(required)")
+                        "by scripts/parse_pfam_names.sh, to fill the family_names "
+                        "caption field (required)")
     p.add_argument("--min-length", type=int, default=0)
     return p.parse_args(argv)
 
@@ -299,8 +313,8 @@ def _load_pfam_names(path: str) -> dict:
 def main(argv=None):
     args = parse_args(argv)
     pfam_names = _load_pfam_names(args.pfam_names)
-    builder = SwissProtLegacyBuilder(min_length=args.min_length,
-                                     pfam_family_names=pfam_names)
+    builder = SwissProtCaptionFieldsBuilder(min_length=args.min_length,
+                                            pfam_family_names=pfam_names)
     run_by_pfam(builder, args.input, args.pfam_ids, args.output,
                 join=args.join, gzip=args.gzip, description=args.description)
 
