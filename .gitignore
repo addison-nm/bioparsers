@@ -3,6 +3,8 @@ outputs/*
 !outputs/README.md
 data/*
 !data/README.md
+databases/*
+!databases/README.md
 logs/*
 !logs/README.md
 delme.*

@@ -6,8 +6,8 @@ set -euo pipefail
 
 mkdir -p outputs
 
-bioparsers uniprot data/trembl/uniprot_trembl.dat.gz \
+bioparsers uniprot databases/trembl/uniprot_trembl.dat.gz \
     -o /media/nm-data/data/trembl_json/uniprot_trembl.jsonl.gz --progress 1000000 --gzip
 
-# bioparsers uniprot data/trembl/uniprot_trembl.dat.gz \
+# bioparsers uniprot databases/trembl/uniprot_trembl.dat.gz \
 #     -o outputs/uniprot_trembl.jsonl --progress
