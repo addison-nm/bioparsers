@@ -5,9 +5,9 @@ turns parsed UniProt JSONL (produced by `scripts/parse_*.sh`) into one
 curated dataset, showing the builder API in use.
 
 These recipes select entries by **Pfam domain** and then project them with
-a builder. Shared orchestration lives in `_pfam_runner.py`; the reusable
-framework lives in `bioparsers.builders` and the UniProt field logic in
-`bioparsers.builders.uniprot`.
+a builder. The shared Pfam runner (`run_by_pfam`) and the UniProt field
+logic live in the package under `bioparsers.builders.uniprot`; the
+database-agnostic framework lives in `bioparsers.builders`.
 
 | Recipe | Builder | Output record |
 |---|---|---|

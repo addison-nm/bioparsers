@@ -10,5 +10,6 @@ sibling subpackage with its own helpers/filters; the generic framework
 """
 
 from bioparsers.builders.uniprot import filters, helpers
+from bioparsers.builders.uniprot.runner import run_by_pfam, with_pfam_suffix
 
-__all__ = ["helpers", "filters"]
+__all__ = ["helpers", "filters", "run_by_pfam", "with_pfam_suffix"]

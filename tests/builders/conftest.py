@@ -2,8 +2,9 @@
 
 Concrete builders live in the top-level ``recipes/`` scripts (each recipe
 demonstrates defining a custom Builder), so the unit tests import them from
-there. Adding ``recipes/`` to ``sys.path`` also lets the recipes' own
-``from _pfam_runner import ...`` resolve on import.
+there by adding ``recipes/`` to ``sys.path``. (The recipes' shared
+Pfam runner now lives in the package — ``bioparsers.builders.uniprot`` —
+so no cross-directory import is involved.)
 """
 
 import os

@@ -17,9 +17,8 @@ import argparse
 from typing import Iterable, Iterator
 
 from bioparsers.builders import Builder
-from bioparsers.builders.uniprot import filters, helpers
+from bioparsers.builders.uniprot import filters, helpers, run_by_pfam
 
-from _pfam_runner import run_by_pfam
 
 
 class UniprotFields(Builder):
