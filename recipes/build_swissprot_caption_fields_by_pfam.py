@@ -97,6 +97,116 @@ _MULTI_SPACE_RE = re.compile(r"  +")
 _ISOFORM_RE = re.compile(r"\[Isoform[^\]]*\]:\s*")
 
 
+# ===========================================================================
+# Builder + CLI
+# ===========================================================================
+
+class SwissProtCaptionFieldsBuilder(Builder):
+    """Full Swiss-Prot annotation fields + caption-ready text, by Pfam.
+
+    Output record::
+
+        {
+          "accession": str,        # primary accession
+          "sequence":  str,        # amino-acid sequence
+          "pfam_ids":  [str],      # Pfam accessions from DR cross-refs
+          "fields": {              # raw extracted fields (the inputs)
+            "protein_name": str,
+            "function": [str], "domain": [str], ...,   # ALL blocks per CC topic
+            "gene_ontology": [str], "lineage": [str],
+          },
+          "caption_fields": {      # cleaned, concatenated text per field
+            "protein_name": str, "function": str, "domain": str, ...,
+            "family_names": str,   # from --pfam-names (required)
+          }
+        }
+
+    No ``[final]text_caption`` is assembled — ``caption_fields`` holds each
+    field's caption-ready string (evidence/PubMed stripped, blocks joined,
+    no ``LABEL:`` prefix) so callers can compose captions as they wish.
+
+    Options:
+      - ``reviewed_only``: keep only Swiss-Prot (Reviewed) entries (default True).
+      - ``min_length``: drop entries shorter than this many residues.
+      - ``pfam_family_names``: {PF: name} map enabling the family_names entry.
+    """
+
+    name = "swissprot_caption_fields"
+
+    def __init__(self, *, reviewed_only: bool = True, min_length: int = 0,
+                 pfam_family_names: dict | None = None):
+        self.reviewed_only = reviewed_only
+        self.min_length = min_length
+        self.pfam_family_names = pfam_family_names
+
+    def build(self, records: Iterable[dict]) -> Iterator[dict]:
+        keep_len = filters.min_length(self.min_length)
+        for rec in records:
+            if self.reviewed_only and not filters.is_reviewed(rec):
+                continue
+            if not keep_len(rec):
+                continue
+
+            pfam_ids = helpers.pfam_ids(rec)
+            family_names = None
+            if self.pfam_family_names is not None:
+                family_names = [self.pfam_family_names.get(p, p) for p in pfam_ids]
+
+            fields = extract_fields(rec)
+            yield {
+                "accession": rec.get("primary_accession"),
+                "sequence": rec.get("sequence"),
+                "pfam_ids": pfam_ids,
+                "fields": fields,
+                "caption_fields": caption_fields(fields, family_names=family_names),
+            }
+
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description=SwissProtCaptionFieldsBuilder.description)
+    p.add_argument("input", help="parsed Swiss-Prot JSONL (plain or .gz)")
+    p.add_argument("--pfam-ids", nargs="+", required=True, metavar="PFAM_ID",
+                   dest="pfam_ids", help="one or more Pfam accessions, e.g. PF00018")
+    p.add_argument("-o", "--output", required=True,
+                   help="output JSONL path; per-ID mode inserts the Pfam ID")
+    p.add_argument("--join", action="store_true",
+                   help="write a single union file instead of one per Pfam ID")
+    p.add_argument("--gzip", action="store_true", help="gzip the output")
+    p.add_argument("--description", default=None,
+                   help="free-text note recorded in each output's build manifest")
+    p.add_argument("--pfam-names", required=True, metavar="TSV",
+                   help="two-column TSV (PF accession<TAB>family name), as written "
+                        "by scripts/parse_pfam_names.sh, to fill the family_names "
+                        "caption field (required)")
+    p.add_argument("--min-length", type=int, default=0)
+    return p.parse_args(argv)
+
+
+def _load_pfam_names(path: str) -> dict:
+    pfam_names = {}
+    with open(path) as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            accession, _, name = line.partition("\t")
+            pfam_names[accession] = name
+    return pfam_names
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    pfam_names = _load_pfam_names(args.pfam_names)
+    builder = SwissProtCaptionFieldsBuilder(min_length=args.min_length,
+                                            pfam_family_names=pfam_names)
+    run_by_pfam(builder, args.input, args.pfam_ids, args.output,
+                join=args.join, gzip=args.gzip, description=args.description)
+
+
+# ===========================================================================
+# Field extraction & caption-text helpers
+# ===========================================================================
+
 def _strip_evidence(text: str) -> str:
     return _EVIDENCE_RE.sub("", text).strip()
 
@@ -215,108 +325,6 @@ def caption_fields(fields: dict, family_names=None) -> dict:
     if family_names:
         out["family_names"] = ", ".join(family_names)
     return out
-
-
-class SwissProtCaptionFieldsBuilder(Builder):
-    """Full Swiss-Prot annotation fields + caption-ready text, by Pfam.
-
-    Output record::
-
-        {
-          "accession": str,        # primary accession
-          "sequence":  str,        # amino-acid sequence
-          "pfam_ids":  [str],      # Pfam accessions from DR cross-refs
-          "fields": {              # raw extracted fields (the inputs)
-            "protein_name": str,
-            "function": [str], "domain": [str], ...,   # ALL blocks per CC topic
-            "gene_ontology": [str], "lineage": [str],
-          },
-          "caption_fields": {      # cleaned, concatenated text per field
-            "protein_name": str, "function": str, "domain": str, ...,
-            "family_names": str,   # from --pfam-names (required)
-          }
-        }
-
-    No ``[final]text_caption`` is assembled — ``caption_fields`` holds each
-    field's caption-ready string (evidence/PubMed stripped, blocks joined,
-    no ``LABEL:`` prefix) so callers can compose captions as they wish.
-
-    Options:
-      - ``reviewed_only``: keep only Swiss-Prot (Reviewed) entries (default True).
-      - ``min_length``: drop entries shorter than this many residues.
-      - ``pfam_family_names``: {PF: name} map enabling the family_names entry.
-    """
-
-    name = "swissprot_caption_fields"
-
-    def __init__(self, *, reviewed_only: bool = True, min_length: int = 0,
-                 pfam_family_names: dict | None = None):
-        self.reviewed_only = reviewed_only
-        self.min_length = min_length
-        self.pfam_family_names = pfam_family_names
-
-    def build(self, records: Iterable[dict]) -> Iterator[dict]:
-        keep_len = filters.min_length(self.min_length)
-        for rec in records:
-            if self.reviewed_only and not filters.is_reviewed(rec):
-                continue
-            if not keep_len(rec):
-                continue
-
-            pfam_ids = helpers.pfam_ids(rec)
-            family_names = None
-            if self.pfam_family_names is not None:
-                family_names = [self.pfam_family_names.get(p, p) for p in pfam_ids]
-
-            fields = extract_fields(rec)
-            yield {
-                "accession": rec.get("primary_accession"),
-                "sequence": rec.get("sequence"),
-                "pfam_ids": pfam_ids,
-                "fields": fields,
-                "caption_fields": caption_fields(fields, family_names=family_names),
-            }
-
-
-def parse_args(argv=None):
-    p = argparse.ArgumentParser(description=SwissProtCaptionFieldsBuilder.description)
-    p.add_argument("input", help="parsed Swiss-Prot JSONL (plain or .gz)")
-    p.add_argument("--pfam-ids", nargs="+", required=True, metavar="PFAM_ID",
-                   dest="pfam_ids", help="one or more Pfam accessions, e.g. PF00018")
-    p.add_argument("-o", "--output", required=True,
-                   help="output JSONL path; per-ID mode inserts the Pfam ID")
-    p.add_argument("--join", action="store_true",
-                   help="write a single union file instead of one per Pfam ID")
-    p.add_argument("--gzip", action="store_true", help="gzip the output")
-    p.add_argument("--description", default=None,
-                   help="free-text note recorded in each output's build manifest")
-    p.add_argument("--pfam-names", required=True, metavar="TSV",
-                   help="two-column TSV (PF accession<TAB>family name), as written "
-                        "by scripts/parse_pfam_names.sh, to fill the family_names "
-                        "caption field (required)")
-    p.add_argument("--min-length", type=int, default=0)
-    return p.parse_args(argv)
-
-
-def _load_pfam_names(path: str) -> dict:
-    pfam_names = {}
-    with open(path) as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if not line:
-                continue
-            accession, _, name = line.partition("\t")
-            pfam_names[accession] = name
-    return pfam_names
-
-
-def main(argv=None):
-    args = parse_args(argv)
-    pfam_names = _load_pfam_names(args.pfam_names)
-    builder = SwissProtCaptionFieldsBuilder(min_length=args.min_length,
-                                            pfam_family_names=pfam_names)
-    run_by_pfam(builder, args.input, args.pfam_ids, args.output,
-                join=args.join, gzip=args.gzip, description=args.description)
 
 
 if __name__ == "__main__":

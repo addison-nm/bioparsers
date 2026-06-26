@@ -7,7 +7,7 @@ protein_sequence, [final]text_caption, pfam_label) from *parsed* UniProt
 JSONL, using the bioparsers.builders framework.
 
 The ``SwissProtLegacyBuilder`` below maps each parsed UniProt record to the
-same annotation field set in the legacy dataset, and also composes a 
+same annotation field set in the legacy dataset, and also composes a
 legacy-style ``caption``:
 
     "PROTEIN NAME: <name>. FUNCTION: <...>. ... LINEAGE: The organism
@@ -95,108 +95,9 @@ _MULTI_SPACE_RE = re.compile(r"  +")
 _ISOFORM_RE = re.compile(r"\[Isoform[^\]]*\]:\s*")
 
 
-def _strip_evidence(text: str) -> str:
-    return _EVIDENCE_RE.sub("", text).strip()
-
-
-def _strip_pubmed(text: str) -> str:
-    text = _PUBMED_RE.sub("", text)
-    text = _MULTI_DOT_RE.sub(".", text)
-    text = _MULTI_SPACE_RE.sub(" ", text).strip()
-    return text
-
-
-def _clean_block(text: str) -> str:
-    """A stored comment block: evidence- and PubMed-stripped, with the
-    doubled-period / double-space artifacts those removals leave repaired."""
-    return _strip_pubmed(_strip_evidence(text))
-
-
-def _all_comments(rec, topic):
-    return [c["text"] for c in rec.get("comments", []) if c.get("topic") == topic]
-
-
-def _full_name(rec):
-    desc = rec.get("description") or {}
-    for key in ("rec_name", "sub_name"):
-        block = desc.get(key)
-        if block and block.get("full"):
-            return _strip_evidence(block["full"]).rstrip(";").rstrip(".").strip()
-    return None
-
-
-def extract_fields(rec) -> dict:
-    """Map a parsed UniProt record to the legacy annotation field set.
-
-    CC-comment fields are collected as **lists of all blocks** of that topic
-    (not just the first), evidence-stripped. ``protein_name`` is a single
-    string; ``lineage`` is a list. Note: GENE ONTOLOGY is deliberately *not*
-    captured — the legacy Swiss-Prot caption SPEC does not include it (it is
-    absent from all 599 Swiss-Prot rows of the reference dataset).
-    """
-    fields = {}
-
-    name = _full_name(rec)
-    if name:
-        fields["protein_name"] = name
-
-    for topic, key in _SIMPLE_TOPICS.items():
-        blocks = [b for b in (_clean_block(t) for t in _all_comments(rec, topic)) if b]
-        if blocks:
-            fields[key] = blocks
-
-    reactions = []
-    for text in _all_comments(rec, "CATALYTIC ACTIVITY"):
-        m = re.search(r"Reaction=([^;]+)", text)
-        if m:
-            reaction = _clean_block(m.group(1))
-            if reaction:
-                reactions.append(reaction)
-    if reactions:
-        fields["catalytic_activity"] = reactions
-
-    sublocs = []
-    for text in _all_comments(rec, "SUBCELLULAR LOCATION"):
-        body = _ISOFORM_RE.sub("", _strip_evidence(text).split("Note=")[0])
-        val = _clean_block(body).rstrip(".")
-        if val:
-            sublocs.append(val)
-    if sublocs:
-        fields["subcellular_location"] = sublocs
-
-    lineage = rec.get("lineage")
-    if lineage:
-        fields["lineage"] = list(lineage)
-
-    return fields
-
-
-def _caption_value(key, value) -> str:
-    """Render a field value to its caption string."""
-    if key == "lineage":
-        return "The organism lineage is " + ", ".join(value)
-    if isinstance(value, list):
-        return " ".join(value)        # join all blocks of a CC topic
-    return value
-
-
-def compose_caption(fields: dict, family_names=None) -> str:
-    """Compose a legacy-style caption from the (list-valued) extracted fields."""
-    parts = []
-    for label, key in SPEC:
-        value = fields.get(key)
-        if not value:
-            continue
-        val = _strip_pubmed(_strip_evidence(_caption_value(key, value))).rstrip(".")
-        if val:
-            parts.append(f"{label}: {val}")
-    if family_names:
-        parts.append("FAMILY NAMES: Family names are " + ", ".join(family_names))
-    caption = ". ".join(parts)
-    if caption and not caption.endswith("."):
-        caption += "."
-    return caption
-
+# ===========================================================================
+# Builder + CLI
+# ===========================================================================
 
 class SwissProtLegacyBuilder(Builder):
     """Legacy BioM3 Swiss-Prot caption records.
@@ -303,6 +204,113 @@ def main(argv=None):
                                      pfam_family_names=pfam_names)
     run_by_pfam(builder, args.input, args.pfam_ids, args.output,
                 join=args.join, gzip=args.gzip, description=args.description)
+
+
+# ===========================================================================
+# Field extraction & caption helpers
+# ===========================================================================
+
+def _strip_evidence(text: str) -> str:
+    return _EVIDENCE_RE.sub("", text).strip()
+
+
+def _strip_pubmed(text: str) -> str:
+    text = _PUBMED_RE.sub("", text)
+    text = _MULTI_DOT_RE.sub(".", text)
+    text = _MULTI_SPACE_RE.sub(" ", text).strip()
+    return text
+
+
+def _clean_block(text: str) -> str:
+    """A stored comment block: evidence- and PubMed-stripped, with the
+    doubled-period / double-space artifacts those removals leave repaired."""
+    return _strip_pubmed(_strip_evidence(text))
+
+
+def _all_comments(rec, topic):
+    return [c["text"] for c in rec.get("comments", []) if c.get("topic") == topic]
+
+
+def _full_name(rec):
+    desc = rec.get("description") or {}
+    for key in ("rec_name", "sub_name"):
+        block = desc.get(key)
+        if block and block.get("full"):
+            return _strip_evidence(block["full"]).rstrip(";").rstrip(".").strip()
+    return None
+
+
+def extract_fields(rec) -> dict:
+    """Map a parsed UniProt record to the legacy annotation field set.
+
+    CC-comment fields are collected as **lists of all blocks** of that topic
+    (not just the first), evidence-stripped. ``protein_name`` is a single
+    string; ``lineage`` is a list. Note: GENE ONTOLOGY is deliberately *not*
+    captured — the legacy Swiss-Prot caption SPEC does not include it (it is
+    absent from all 599 Swiss-Prot rows of the reference dataset).
+    """
+    fields = {}
+
+    name = _full_name(rec)
+    if name:
+        fields["protein_name"] = name
+
+    for topic, key in _SIMPLE_TOPICS.items():
+        blocks = [b for b in (_clean_block(t) for t in _all_comments(rec, topic)) if b]
+        if blocks:
+            fields[key] = blocks
+
+    reactions = []
+    for text in _all_comments(rec, "CATALYTIC ACTIVITY"):
+        m = re.search(r"Reaction=([^;]+)", text)
+        if m:
+            reaction = _clean_block(m.group(1))
+            if reaction:
+                reactions.append(reaction)
+    if reactions:
+        fields["catalytic_activity"] = reactions
+
+    sublocs = []
+    for text in _all_comments(rec, "SUBCELLULAR LOCATION"):
+        body = _ISOFORM_RE.sub("", _strip_evidence(text).split("Note=")[0])
+        val = _clean_block(body).rstrip(".")
+        if val:
+            sublocs.append(val)
+    if sublocs:
+        fields["subcellular_location"] = sublocs
+
+    lineage = rec.get("lineage")
+    if lineage:
+        fields["lineage"] = list(lineage)
+
+    return fields
+
+
+def _caption_value(key, value) -> str:
+    """Render a field value to its caption string."""
+    if key == "lineage":
+        return "The organism lineage is " + ", ".join(value)
+    if isinstance(value, list):
+        return " ".join(value)        # join all blocks of a CC topic
+    return value
+
+
+def compose_caption(fields: dict, family_names=None) -> str:
+    """Compose a legacy-style caption from the (list-valued) extracted fields."""
+    parts = []
+    for label, key in SPEC:
+        value = fields.get(key)
+        if not value:
+            continue
+        val = _strip_pubmed(_strip_evidence(_caption_value(key, value))).rstrip(".")
+        if val:
+            parts.append(f"{label}: {val}")
+    if family_names:
+        parts.append("FAMILY NAMES: Family names are " + ", ".join(family_names))
+    caption = ". ".join(parts)
+    if caption and not caption.endswith("."):
+        caption += "."
+    return caption
 
 
 if __name__ == "__main__":
