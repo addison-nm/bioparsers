@@ -13,6 +13,7 @@ DATDIR = os.path.join(os.path.dirname(__file__), "_data")
 SPROT = os.path.join(DATDIR, "uniprot_sprot_mini.dat")
 PFAM = os.path.join(DATDIR, "pfam_mini.stockholm")
 PFAM_FASTA = os.path.join(DATDIR, "pfam_mini.fasta")
+SUPPLEMENT = os.path.join(DATDIR, "supplement_mini.csv")
 
 
 class TestCli:
@@ -174,6 +175,23 @@ class TestCli:
         assert rc == 0
         recs = [json.loads(l) for l in out.out.splitlines()]
         assert [r["name"] for r in recs] == ["SEQ1_TEST", "SEQ2_TEST", "SEQ3_TEST"]
+
+    def test_csv_to_stdout(self, capsys):
+        rc = main(["csv", SUPPLEMENT])
+        out = capsys.readouterr()
+        assert rc == 0
+        recs = [json.loads(l) for l in out.out.splitlines()]
+        assert len(recs) == 3
+        assert recs[0]["sh3_paralog_name"] == "SLA1"
+        assert recs[1]["paralog_function"] == ""  # empty cell preserved
+        assert "3 records" in out.err
+
+    def test_csv_delimiter_option(self, tmp_path, capsys):
+        p = tmp_path / "t.csv"
+        p.write_text("a|b\n1|2\n")
+        rc = main(["csv", str(p), "--delimiter", "|"])
+        assert rc == 0
+        assert json.loads(capsys.readouterr().out) == {"a": "1", "b": "2"}
 
     def test_no_subcommand_errors(self):
         with pytest.raises(SystemExit):

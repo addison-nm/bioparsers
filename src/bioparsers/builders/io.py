@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import gzip
 import json
+import shutil
+import subprocess
 from contextlib import contextmanager
 from typing import Callable, Iterable, Iterator
 
-from bioparsers.parsers.base import open_text
+from bioparsers.parsers.base import ParseError, open_text
 
 
 def load_jsonl(path: str) -> Iterator[dict]:
@@ -65,6 +67,41 @@ def write_jsonl(records: Iterable[dict], path: str, *, gzip: bool = False) -> in
 def materialize(stream: Iterable[dict]) -> list[dict]:
     """Collect a builder stream into a list (opt-in; small results only)."""
     return list(stream)
+
+
+def iter_text_lines(path: str) -> Iterator[str]:
+    """Yield raw text lines from a plain or gzipped file.
+
+    For ``.gz`` input this prefers ``pigz -dc`` (parallel decompression) when
+    the binary is available, falling back to stdlib ``gzip``. It returns *raw
+    lines* (not parsed JSON), so a caller scanning a huge file can cheaply
+    prefilter before paying for ``json.loads`` — the hot path for the
+    Pfam→UniProt join over TrEMBL.
+
+    Fail-loud: a corrupt or truncated ``.gz`` stream raises ``ParseError`` (a
+    nonzero ``pigz`` exit, or the stdlib error). Early termination by the
+    consumer (e.g. ``break`` once enough records are found) is fine — the
+    ``pigz`` subprocess is closed and its resulting ``SIGPIPE`` exit (a
+    negative return code) is *not* treated as corruption.
+    """
+    if path.endswith(".gz") and shutil.which("pigz"):
+        proc = subprocess.Popen(["pigz", "-dc", path], stdout=subprocess.PIPE,
+                                text=True, encoding="utf-8")
+        try:
+            yield from proc.stdout
+        finally:
+            proc.stdout.close()
+            rc = proc.wait()
+            # rc > 0: pigz reported an error (e.g. truncated input) -> fail loud.
+            # rc < 0: killed by a signal (SIGPIPE from early break) -> expected.
+            if rc and rc > 0:
+                raise ParseError(f"pigz failed (exit {rc}) decompressing {path}")
+    elif path.endswith(".gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as handle:
+            yield from handle
+    else:
+        with open(path, "rt", encoding="utf-8") as handle:
+            yield from handle
 
 
 def _gzip_open(path, mode, encoding):

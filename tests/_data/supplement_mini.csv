@@ -1,0 +1,5 @@
+primary_Accession,protein_sequence,protein_name,lineage,sh3_paralog_name,paralog_function
+3708.0,TVFLGVYKAL,SH3 domain,cellular organisms; Eukaryota; Fungi,SLA1,"Cytoskeletal binding, required for actin assembly"
+1310.0,GTGSNKNKVL,SH3 domain,cellular organisms; Eukaryota; Fungi,,
+9606.0,MKLPADSIQA,SH3 domain,cellular organisms; Eukaryota; Metazoa,GRB2,"Adapter protein.
+Links receptors to Ras."

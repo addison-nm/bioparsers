@@ -42,7 +42,14 @@ framework's io) to compose a dataset::
 """
 
 from bioparsers.builders.base import Builder
-from bioparsers.builders.io import jsonl_writer, load_jsonl, materialize, write_jsonl
+from bioparsers.builders.concatenate import ConcatenatedDataset, concatenate
+from bioparsers.builders.io import (
+    iter_text_lines,
+    jsonl_writer,
+    load_jsonl,
+    materialize,
+    write_jsonl,
+)
 from bioparsers.builders.manifest import generate_manifest, write_manifest
 
 __all__ = [
@@ -50,7 +57,10 @@ __all__ = [
     "load_jsonl",
     "write_jsonl",
     "jsonl_writer",
+    "iter_text_lines",
     "materialize",
+    "concatenate",
+    "ConcatenatedDataset",
     "generate_manifest",
     "write_manifest",
 ]

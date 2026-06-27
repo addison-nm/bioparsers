@@ -11,11 +11,14 @@ rather than producing a silently short result.
     bioparsers uniprot in.dat -o out.jsonl
     bioparsers pfam Pfam-A.full.gz -o pfam.jsonl
     bioparsers pfam-fasta Pfam-A.fasta.gz --pfam-id PF00018 > sh3_members.jsonl
+    bioparsers csv SH3_supplement_data.csv > supplement.jsonl
 
 The ``pfam``/``pfam-fasta`` subcommands add Pfam-specific options (``--pfam-id``,
-``--with-member-accessions`` / ``--with-member-sequences``, ``--join``); see
-``--help``. JSONL is currently the only emission format (mirroring the
-library's ``dump_jsonl`` helper); CSV/Parquet are deliberately out of scope.
+``--with-member-accessions`` / ``--with-member-sequences``, ``--join``); the
+``csv`` subcommand reads a delimited table (one ``CsvRecord`` per row, keyed by
+the header) and adds ``--delimiter``. See ``--help``. JSONL is the only *output*
+format (mirroring the library's ``dump_jsonl`` helper); CSV/Parquet output is
+deliberately out of scope.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ import sys
 from typing import Callable, Iterator
 
 from bioparsers.parsers import ParseError, Record, dump_jsonl, dump_jsonl_split
-from bioparsers.parsers import pfam_fasta, pfam_stockholm, uniprot_dat
+from bioparsers.parsers import csv_table, pfam_fasta, pfam_stockholm, uniprot_dat
 
 #: Subcommand name -> ``iter_records`` callable for that database. Adding a
 #: parser is one entry here; the subcommand and its arguments are generated.
@@ -36,6 +39,7 @@ _PARSERS: dict[str, Callable[[str], Iterator[Record]]] = {
     "uniprot": uniprot_dat.iter_records,
     "pfam": pfam_stockholm.iter_records,
     "pfam-fasta": pfam_fasta.iter_records,
+    "csv": csv_table.iter_records,
 }
 
 #: Subcommands that accept a repeatable ``--pfam-id`` family filter.
@@ -67,6 +71,11 @@ def parse_args(argv):
             help="print a record-count heartbeat to stderr every N records "
                  "(default 100000 when given with no value)",
         )
+        if name == "csv":
+            p.add_argument(
+                "--delimiter", default=None, metavar="CHAR",
+                help="field delimiter (default: tab for .tsv/.tab, else comma)",
+            )
         if name in _PFAM_FILTERABLE:
             p.add_argument(
                 "--pfam-id", action="append", default=None, metavar="PFXXXXX",
@@ -98,6 +107,8 @@ def _parser_kwargs(args) -> dict:
     """Build the parser-specific keyword arguments for ``iter_records`` from the
     parsed CLI args (only the Pfam parsers currently take any)."""
     kwargs: dict = {}
+    if args.parser == "csv" and getattr(args, "delimiter", None):
+        kwargs["delimiter"] = args.delimiter
     if args.parser in _PFAM_FILTERABLE and getattr(args, "pfam_id", None):
         kwargs["accessions"] = args.pfam_id
     if args.parser == "pfam":

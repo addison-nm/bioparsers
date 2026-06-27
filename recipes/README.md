@@ -1,10 +1,13 @@
 # recipes
 
-Runnable recipe scripts that turn **parsed Swiss-Prot JSONL** into curated
-datasets — selecting entries by Pfam domain and projecting them with a
-`Builder`. The shared Pfam runner (`run_by_pfam`) and the UniProt field logic
-live in the package under `bioparsers.builders.uniprot`; the database-agnostic
-framework lives in `bioparsers.builders`.
+Runnable recipe scripts that turn **parsed reference-database JSONL** into
+curated datasets with a `Builder`. The Swiss-Prot recipes are a single streaming
+pass over UniProt selected by Pfam domain; the Pfam recipes join Pfam members,
+family metadata, and UniProt annotation; the supplement recipe is a flat per-row
+transform of the parsed supplement table (no Pfam filter, no join). The shared
+runners and field logic live in the package under `bioparsers.builders.uniprot`
+(`run_by_pfam`) and `bioparsers.builders.pfam` (`run_pfam_join`); the
+database-agnostic framework lives in `bioparsers.builders`.
 
 (`swissprot` here means the Swiss-Prot — reviewed — section of UniProt, as
 opposed to TrEMBL.)
@@ -14,8 +17,149 @@ opposed to TrEMBL.)
 | `build_swissprot_legacy_by_pfam.py` | `swissprot_legacy` | `{accession, sequence, pfam_ids, caption, fields}` — a legacy-style `[final]text_caption` plus the fields it is built from |
 | `build_swissprot_caption_fields_by_pfam.py` | `swissprot_caption_fields` | `{accession, sequence, pfam_ids, fields, caption_fields}` — raw fields and a parallel dict of cleaned, concatenated per-field text (no assembled caption) |
 | `build_swissprot_demo_fields_by_pfam.py` | `swissprot_demo_fields` | `{accession, sequence, fields:{name?, function?, domains?}}` — a minimal demo |
+| `build_pfam_legacy_by_pfam.py` | `pfam_legacy` | `{accession, sequence, region, pfam_ids, caption, fields}` — a legacy-style Pfam `[final]text_caption` (FAMILY NAME/DESCRIPTION + UniProt annotation joined on the member accession) plus the fields it is built from |
+| `build_pfam_caption_fields_by_pfam.py` | `pfam_caption_fields` | `{accession, sequence, region, pfam_ids, fields, caption_fields}` — raw fields and a parallel dict of cleaned, concatenated per-field text (no assembled caption) |
+| `build_supplement_legacy.py` | `supplement_legacy` | `{accession, sequence, pfam_ids, caption, fields}` — a legacy-style Supplemental `[final]text_caption` (PROTEIN NAME / LINEAGE + optional SH3 PARALOG NAME / PARALOG FUNCTION) plus the fields it is built from |
+| `build_supplement_caption_fields.py` | `supplement_caption_fields` | `{accession, sequence, pfam_ids, fields, caption_fields}` — raw fields + bare caption-ready text (no assembled caption) |
+| `build_legacy_dataset.py` | `legacy_sh3_dataset` | a 4-column **CSV** (`primary_Accession, protein_sequence, [final]text_caption, pfam_label`) concatenating the three section outputs in legacy order |
+| `concatenate_datasets.py` | `concatenated_dataset` | concatenate any number of labeled `NAME=PATH` JSONL[.gz] sources into one JSONL, each record tagged with a root `source` |
 
 Optional text fields are omitted when the source entry has no value.
+
+## The supplement recipe
+
+`build_supplement_legacy.py` reproduces the **Supplemental** section. Its input
+is the parsed supplement table — first convert the CSV to JSONL with the `csv`
+parser, then build (no Pfam filter, no UniProt join; `pfam_label` is empty for
+every supplement entry):
+
+```bash
+bioparsers csv databases/misc/SH3_supplement_data.csv -o data/supplement.jsonl
+python recipes/build_supplement_legacy.py data/supplement.jsonl \
+    -o outputs/supplement_legacy_SH3.jsonl
+```
+
+Because the supplement table is its own source (no external release to drift
+against), this reproduces the section's captions exactly.
+
+## Assembling the complete legacy dataset
+
+`build_legacy_dataset.py` stitches the three section outputs into the single
+4-column CSV of `FINAL_SH3_all_dataset_with_prompts.csv`, concatenated in legacy
+order (**Supplemental → Swiss-Prot → Pfam**). Build each section first, then
+assemble:
+
+```bash
+python recipes/build_legacy_dataset.py \
+    --supplement outputs/supplement_legacy_SH3.jsonl \
+    --swissprot  outputs/swissprot_legacy_SH3.PF00018.jsonl \
+    --pfam       outputs/pfam_legacy_SH3.PF00018.jsonl \
+    -o outputs/FINAL_SH3_all_reproduced.csv
+```
+
+`pfam_label` is filled per the legacy convention (empty for supplement, the
+list-repr of all Pfam IDs for Swiss-Prot, the single family accession for Pfam).
+The Supplemental section reproduces exactly; the Swiss-Prot and Pfam sections are
+approximate (Pfam-release drift), so the assembled file matches the legacy CSV's
+form and ordering but not its exact row count.
+
+## Concatenating datasets (the combined caption_fields dataset)
+
+`concatenate_datasets.py` is a generic utility (core in
+`bioparsers.builders.concatenate`): it concatenates any number of labeled
+`NAME=PATH` JSONL[.gz] sources, in order, adding the source `NAME` at the root of
+each record (key `source`, override with `--source-key`). It is the improved
+counterpart to the legacy CSV — instead of an assembled caption, combine the
+three sources' **caption_fields** outputs into one source-tagged JSONL so a
+trainer can compose captions on the fly (annotation dropout, field
+randomization). Build each section's `caption_fields` first, then concatenate:
+
+```bash
+python recipes/concatenate_datasets.py \
+    supplemental=outputs/supplement_caption_fields_SH3.jsonl \
+    swissprot=outputs/swissprot_caption_fields_SH3.PF00018.jsonl \
+    pfam=outputs/pfam_caption_fields_SH3.PF00018.jsonl \
+    -o outputs/SH3_caption_fields_all.jsonl
+```
+
+Each output record is the input record with `source` added at the root, e.g.
+`{source, accession, sequence, region?, pfam_ids, fields, caption_fields}`. The
+sources are arbitrary — any labeled JSONL files concatenate the same way.
+
+## The Pfam recipes (a three-way join)
+
+The two Pfam recipes share one join runner (`run_pfam_join`):
+`build_pfam_legacy_by_pfam.py` assembles the legacy `[final]text_caption`, and
+`build_pfam_caption_fields_by_pfam.py` instead keeps the structured `fields` and
+cleaned `caption_fields` text side by side (no assembled caption) for on-the-fly
+caption composition — the Pfam analogue of the `swissprot_caption_fields`
+recipe. Both reproduce the **Pfam** section of the legacy BioM3 SH3 dataset.
+Unlike the Swiss-Prot recipes, the input is the parsed Pfam **member FASTA**
+JSONL (one redundancy-reduced domain sequence per member — the row's
+`protein_sequence`), and each joins two more sources:
+
+- `--pfam-families` — a parsed Pfam **family** JSONL (`bioparsers pfam`),
+  supplying `FAMILY NAME` / `FAMILY DESCRIPTION` (the same for every member of a
+  family).
+- `--uniprot` — one or more parsed UniProt JSONL files, joined on the member
+  accession for `PROTEIN NAME … GENE ONTOLOGY, LINEAGE`. Most Pfam members are
+  TrEMBL, so the default is Swiss-Prot **then** TrEMBL
+  (`data/uniprot_sprot.jsonl.gz data/uniprot_trembl.jsonl.gz`); a member with
+  no accession / no UniProt match keeps only the FAMILY section. The join uses
+  an in-memory accession index (the ~24k accessions of a family fit easily),
+  streaming the UniProt file(s) once and stopping early once all are found.
+
+The caption is `FAMILY NAME: … . FAMILY DESCRIPTION: …` with the UniProt-derived
+section (`GENE ONTOLOGY` ordered by aspect C→F→P) appended directly. As with the
+Swiss-Prot recipes this is an *approximate* reproduction — the published dataset
+was built against an older Pfam release, so the redundancy-reduced member set
+has drifted.
+
+### Runtime
+
+The member FASTA and (especially) UniProt are large, so the join is optimized:
+
+- Both scans **prefilter each line** (a cheap accession/family substring check)
+  and only `json.loads` matches, and decompress `.gz` with **`pigz`** when the
+  binary is on `PATH` (falling back to stdlib `gzip`) — so the cost is roughly
+  decompression-bound rather than JSON-bound.
+- The member scan **stops** once the requested families' (contiguous) blocks
+  have passed.
+- `--uniprot-cache PATH` writes the resolved UniProt subset (gzipped, with the
+  requested accession set + sources it was built from). A later run whose
+  accessions are a **subset** of the cached set, with the same `--uniprot`
+  sources, reuses it and **skips the UniProt scan entirely** — e.g. running this
+  recipe and then the `caption_fields` variant on the same family pays the
+  TrEMBL scan only once. Point it at a **plain file** to cache the union of all
+  `--pfam-ids`, or at a **directory** (trailing `/`, e.g. `data/.uniprot_cache/`)
+  to keep one cache file per Pfam ID — then each family is independently
+  reusable, and a run mixing cached and new families scans only the new ones.
+  A per-family cache is small (only the *resolved* records — ~10–20 MB gzipped
+  for SH3); a global UniProt index would instead be ~5–10 GB up to ~1 TB.
+
+```bash
+python recipes/build_pfam_legacy_by_pfam.py data/pfam_fasta.jsonl.gz \
+    --pfam-ids PF00018 --pfam-families data/pfam.jsonl.gz \
+    --uniprot data/uniprot_sprot.jsonl.gz data/uniprot_trembl.jsonl.gz \
+    --uniprot-cache data/.uniprot_cache/ \
+    -o outputs/pfam_legacy_SH3.jsonl
+```
+
+The first run still pays one full TrEMBL pass (~tens of minutes — there is no
+way to find scattered accessions in a 143 GB stream without reading it); every
+later run on cached families is seconds.
+
+Capture the Pfam field set plus caption-ready text (no assembled caption). With
+the same `--uniprot-cache` directory it reuses the cache the legacy run built —
+the TrEMBL scan is paid once across both recipes:
+
+```bash
+python recipes/build_pfam_caption_fields_by_pfam.py data/pfam_fasta.jsonl.gz \
+    --pfam-ids PF00018 --pfam-families data/pfam.jsonl.gz \
+    --uniprot data/uniprot_sprot.jsonl.gz data/uniprot_trembl.jsonl.gz \
+    --uniprot-cache data/.uniprot_cache/ \
+    -o outputs/pfam_caption_fields_SH3.jsonl
+```
 
 ## Pfam filtering
 
@@ -40,12 +184,18 @@ python recipes/build_swissprot_demo_fields_by_pfam.py data/uniprot_sprot.jsonl.g
     --pfam-ids PF00069 PF00027 --join -o outputs/sprot_kinases.jsonl
 ```
 
+For the Pfam recipe `--pfam-ids` selects which **families** to emit (members of
+those families); the same per-ID vs `--join` output rules apply.
+
 Inputs and outputs may be gzipped (`.gz` input is auto-detected; pass `--gzip`
 to compress the output). `--min-length` applies on top of the Pfam filter for
-all recipes; the demo recipe also takes `--reviewed-only`. The `swissprot_legacy`
-and `swissprot_caption_fields` recipes additionally **require** `--pfam-names`
+all recipes (for `pfam_legacy` it measures the **domain region**); the demo
+recipe also takes `--reviewed-only`. The `swissprot_legacy` and
+`swissprot_caption_fields` recipes additionally **require** `--pfam-names`
 (a `PF<TAB>name` TSV written by `scripts/parse_pfam_names.sh`) to fill the
-FAMILY NAMES / `family_names` field.
+FAMILY NAMES / `family_names` field; the `pfam_legacy` recipe instead
+**requires** `--pfam-families` (a parsed Pfam family JSONL) and joins
+`--uniprot` file(s) on the member accession.
 
 ## Build manifests
 
@@ -79,4 +229,62 @@ A minimal demo (no `--pfam-names`):
 ```bash
 python recipes/build_swissprot_demo_fields_by_pfam.py data/uniprot_sprot.jsonl.gz \
     --pfam-ids PF00018 -o outputs/swissprot_demo.jsonl
+```
+
+Reproduce the Pfam portion of the BioM3 legacy SH3 dataset (member FASTA in,
+family metadata + UniProt joined on the member accession). Point both recipes at
+the same `--uniprot-cache` directory so the one-time TrEMBL scan is shared — the
+first call builds `data/.uniprot_cache/PF00018.jsonl.gz`, the second reuses it:
+
+```bash
+# legacy [final]text_caption
+python recipes/build_pfam_legacy_by_pfam.py data/pfam_fasta.jsonl.gz \
+    --pfam-ids PF00018 \
+    --pfam-families data/pfam.jsonl.gz \
+    --uniprot data/uniprot_sprot.jsonl.gz data/uniprot_trembl.jsonl.gz \
+    --uniprot-cache data/.uniprot_cache/ \
+    -o outputs/pfam_legacy_SH3.jsonl
+
+# structured fields + caption-ready text, no assembled caption (reuses the cache)
+python recipes/build_pfam_caption_fields_by_pfam.py data/pfam_fasta.jsonl.gz \
+    --pfam-ids PF00018 \
+    --pfam-families data/pfam.jsonl.gz \
+    --uniprot data/uniprot_sprot.jsonl.gz data/uniprot_trembl.jsonl.gz \
+    --uniprot-cache data/.uniprot_cache/ \
+    -o outputs/pfam_caption_fields_SH3.jsonl
+```
+
+Reproduce the Supplemental section from the parsed supplement table
+(`data/supplement.jsonl`):
+
+```bash
+# legacy [final]text_caption
+python recipes/build_supplement_legacy.py data/supplement.jsonl \
+    -o outputs/supplement_legacy_SH3.jsonl
+
+# structured fields + caption-ready text, no assembled caption
+python recipes/build_supplement_caption_fields.py data/supplement.jsonl \
+    -o outputs/supplement_caption_fields_SH3.jsonl
+```
+
+Assemble the three legacy sections into the complete dataset CSV (in order
+Supplemental → Swiss-Prot → Pfam):
+
+```bash
+python recipes/build_legacy_dataset.py \
+    --supplement outputs/supplement_legacy_SH3.jsonl \
+    --swissprot  outputs/swissprot_legacy_SH3.PF00018.jsonl \
+    --pfam       outputs/pfam_legacy_SH3.PF00018.jsonl \
+    -o outputs/FINAL_SH3_all_reproduced.csv
+```
+
+Concatenate the three sources' `caption_fields` into one JSONL, each record
+tagged with a root `source`:
+
+```bash
+python recipes/concatenate_datasets.py \
+    supplemental=outputs/supplement_caption_fields_SH3.jsonl \
+    swissprot=outputs/swissprot_caption_fields_SH3.PF00018.jsonl \
+    pfam=outputs/pfam_caption_fields_SH3.PF00018.jsonl \
+    -o outputs/SH3_caption_fields_all.jsonl
 ```

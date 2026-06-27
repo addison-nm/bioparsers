@@ -19,6 +19,7 @@ Implemented:
 | UniProtKB Swiss-Prot / TrEMBL `.dat` | `bioparsers.parsers.uniprot_dat` | `UniProtRecord` |
 | Pfam-A Stockholm (`Pfam-A.full`) | `bioparsers.parsers.pfam_stockholm` | `PfamRecord` |
 | Pfam-A member FASTA (`Pfam-A.fasta`) | `bioparsers.parsers.pfam_fasta` | `PfamFastaRecord` |
+| Delimited table (CSV / TSV) | `bioparsers.parsers.csv_table` | `CsvRecord` |
 
 ## Setup
 
@@ -42,7 +43,23 @@ pip install -e '.[dev]'
 ### Parsers
 
 The parser layer reads database files into `Record`s. It can be used as a library
-or through the `bioparsers` console script.
+or through the `bioparsers` console script. Each parser exposes
+`iter_records(path) -> Iterator[Record]`:
+
+- **`uniprot_dat`** — consumes UniProtKB Swiss-Prot / TrEMBL `.dat` flat files;
+  yields one **`UniProtRecord`** per entry: accessions, reviewed/unreviewed
+  status, names, gene names, organism + lineage + taxon, references, comments,
+  features, cross-references, keywords, and the amino-acid sequence (validated
+  against the ID/SQ length and CRC64).
+- **`pfam_stockholm`** — consumes a Pfam-A Stockholm release (`Pfam-A.full`),
+  or `Pfam-A.hmm` for just the name table; yields one **`PfamRecord`** per
+  family: accession, name, description, type, clan, references, GA/TC/NC
+  thresholds, cross-references, and member count — with the member list and each
+  member's ungapped sequence available via opt-in.
+- **`pfam_fasta`** — consumes the Pfam-A member FASTA (`Pfam-A.fasta`, the
+  redundancy-reduced member set); yields one **`PfamFastaRecord`** per member
+  sequence: member accession + name, aligned region, its Pfam family, and the
+  ungapped residues.
 
 #### Command line
 
@@ -75,6 +92,15 @@ bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --pfam-id PF07714 \
     --with-member-sequences -o out_dir/                           # one file per family
 bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --join > sh3.jsonl
 bioparsers pfam-fasta Pfam-A.fasta.gz --pfam-id PF00018 > sh3_members.jsonl
+```
+
+The `csv` subcommand converts a delimited table (CSV/TSV) to JSONL, one object
+per row keyed by the header. `--delimiter` overrides the extension-based default
+(tab for `.tsv`/`.tab`, else comma):
+
+```bash
+bioparsers csv SH3_supplement_data.csv > supplement.jsonl
+bioparsers csv table.tsv > table.jsonl                 # tab inferred from .tsv
 ```
 
 #### Library
@@ -115,21 +141,33 @@ for member in pfam_fasta.iter_records("Pfam-A.fasta.gz", accessions=["PF00018"])
     print(member.accession, member.region, member.sequence)
 ```
 
+`csv_table` handles sources that already ship as a structured table (e.g. the SH3
+Legacy supplemental data). It is **general**: each row becomes an open-bag
+`CsvRecord` keyed by the header columns, values kept verbatim as strings. The
+delimiter defaults to a tab for `.tsv`/`.tab` and a comma otherwise.
+
+```python
+from bioparsers.parsers import csv_table
+
+for row in csv_table.iter_records("SH3_supplement_data.csv"):
+    print(row["primary_Accession"], row["protein_name"], row["sh3_paralog_name"])
+```
+
 ### Builders
 
-`bioparsers.builders` is a small framework for turning parsed JSONL into
-curated datasets. The framework itself is database-agnostic: the `Builder`
-base class, streaming I/O (`load_jsonl` / `write_jsonl` / `jsonl_writer` /
-`materialize`). The *record-shaped* logic lives in a per-database
-subpackage — `bioparsers.builders.uniprot` provides `helpers`
-(`strip_evidence`, `strip_citations`, `clean_text`, `full_name`,
-`joined_comment`, `pfam_ids`) and `filters` (`is_reviewed`, `min_length`,
-`has_pfam`). A new source database gets its own sibling subpackage.
+`bioparsers.builders` is a framework for turning parsed JSONL into
+curated datasets. The `Builder` base class, streaming I/O 
+(`load_jsonl` / `write_jsonl` / `jsonl_writer` / `materialize`) is 
+database-agnostic. The record-shaped logic lives in a per-database
+subpackage e.g. `bioparsers.builders.uniprot` (helpers/filters + the
+`run_by_pfam` single-pass runner) and `bioparsers.builders.pfam` (the
+`run_pfam_legacy` runner, which joins Pfam members with family metadata and
+UniProt annotation). A new source database gets its own sibling subpackage.
 
-Concrete builders are **not** in the package — you define your own. Each is
+Concrete builders are directly provided in the package, but can be defined
+by users in an on-demand fashion. Each is
 a `Builder` subclass with a versioned `name` and a long-form `description`
-documenting its output record form (both enforced at definition time,
-mirroring how each parser subclasses `Record`). Builders are streaming-first
+documenting its output record form. Builders are streaming-first
 (constant memory); `materialize()` collects streamed results into a list.
 
 ```python
@@ -162,20 +200,30 @@ write_manifest(SwissProtFunction(), "outputs/sprot_function.jsonl.manifest.json"
                description="flat sequence/function pairs")
 ```
 
-The [`recipes/`](recipes/) scripts are runnable, worked examples of exactly
-this — defining a `Builder`, composing a Pfam-filtered dataset from the
-parsed data, and writing a `<output>.manifest.json` sidecar for each output:
+The [`recipes/`](recipes/) scripts are runnable, worked examples — each defines
+a `Builder` and writes a `<output>.manifest.json` sidecar per output. The
+`swissprot_*` recipes **consume** parsed Swiss-Prot JSONL filtered to one or
+more Pfam IDs; the `pfam_*` recipes consume parsed Pfam member FASTA JSONL and
+join family metadata + UniProt annotation; the `supplement_legacy` recipe is a
+flat per-row transform of the parsed supplement table. Per kept entry they
+**produce**:
 
-| Recipe builder | Output record |
+| Builder | Output record |
 |---|---|
-| `swissprot_legacy` | legacy-style `caption` + the structured `fields` it is built from |
-| `swissprot_caption_fields` | raw `fields` + a `caption_fields` dict (cleaned, per-field text) |
-| `swissprot_demo_fields` | nested `{accession, sequence, fields:{name?, function?, domains?}}` |
+| `swissprot_legacy` | the sequence + a legacy-style text `caption` (and the `fields` it is built from) |
+| `swissprot_caption_fields` | the sequence + raw `fields` + a `caption_fields` dict (cleaned per-field text; no assembled caption) |
+| `swissprot_demo_fields` | `{accession, sequence, fields:{name?, function?, domains?}}` — a minimal demo |
+| `pfam_legacy` | the domain `sequence` + `region` + a legacy-style Pfam `caption` (FAMILY NAME/DESCRIPTION + UniProt annotation joined on the member accession) and the `fields` it is built from |
+| `pfam_caption_fields` | the domain `sequence` + `region` + raw `fields` + a `caption_fields` dict (cleaned per-field text; no assembled caption) |
+| `supplement_legacy` | the sequence + a legacy-style Supplemental `caption` (PROTEIN NAME / LINEAGE + optional paralog fields) and the `fields` it is built from |
+| `supplement_caption_fields` | the sequence + raw `fields` + a `caption_fields` dict (no assembled caption) |
+| `legacy_sh3_dataset` | assembles the three section outputs into one 4-column legacy **CSV** (`build_legacy_dataset.py`), in order Supplemental → Swiss-Prot → Pfam |
+| `concatenated_dataset` | concatenates any number of labeled `NAME=PATH` JSONL sources into one **JSONL** (`concatenate_datasets.py`), each record tagged with a root `source` |
 
 Optional fields are omitted when the source has no value.
 
 ## Tests
 
 ```bash
-pytest
+python -m pytest tests/
 ```

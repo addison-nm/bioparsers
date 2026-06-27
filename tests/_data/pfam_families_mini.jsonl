@@ -1,0 +1,4 @@
+{"accession": "PF99991", "short_id": "TestFam_A", "name": "SH3 test", "description": "A test SH3 family.", "family_type": "Domain", "clan": null, "num_sequences": 3, "members": []}
+{"accession": "PF99992", "short_id": "TestFam_B", "name": "Beta domain", "description": "Beta family blurb.", "family_type": "Domain", "clan": null, "num_sequences": 1, "members": []}
+{"accession": "PF99993", "short_id": "TestFam_C", "name": "Gamma domain", "description": "Gamma family blurb.", "family_type": "Family", "clan": null, "num_sequences": 1, "members": []}
+{"accession": "PF99994", "short_id": "TestFam_D", "name": "Unused domain", "description": "Not referenced by any member.", "family_type": "Domain", "clan": null, "num_sequences": 0, "members": []}
