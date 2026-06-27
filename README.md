@@ -7,21 +7,10 @@ faithful, typed Python records.
 
 `bioparsers` has two layers:
 
-- **`parsers`** — the faithful parse layer: raw file inputs and structured
-  `Record` outputs.
-- **`builders`** — an optional dataset layer that composes *curated
-  datasets* from the parsed JSONL. It is kept strictly separate so the parse 
-  layer stays pure.
-
-Parser design principles:
-
-- **Faithful capture** — if the source provides a value, capture it as
-  written with minimal edits; no invented schema or prose.
-- **Fail loud** — truncated or corrupt input raises `ParseError` rather
-  than returning a silently short result.
-- **One executable schema per parser** — each parser subclasses `Record`
-  with class-level annotations that are both the type-checked schema and
-  a runtime contract (a missing/extra field raises `SchemaError`).
+- **`parsers`** — Processes raw database inputs and produces iterables
+  of structured records.
+- **`builders`** — a composition layer that produces curated datasets 
+  from the parsed records.
 
 Implemented:
 
@@ -33,7 +22,7 @@ Implemented:
 
 ## Setup
 
-Requires Python 3.12+ and a single runtime dependency (`biopython`).
+Requires Python 3.12+.
 
 With conda (in-tree env at `./env`):
 
@@ -52,8 +41,41 @@ pip install -e '.[dev]'
 
 ### Parsers
 
-The parse layer reads a flat-file into faithful `Record`s — use it as a library
+The parser layer reads database files into `Record`s. It can be used as a library
 or through the `bioparsers` console script.
+
+#### Command line
+
+The `bioparsers` console script parses a flat-file to JSONL (one compact
+object per line) on stdout, or to a file with `-o`. Input may be plain
+or gzipped:
+
+```bash
+bioparsers uniprot uniprot_sprot.dat.gz > out.jsonl
+bioparsers uniprot in.dat -o out.jsonl
+bioparsers uniprot in.dat.gz --gzip -o out.jsonl.gz   # compress output
+bioparsers uniprot in.dat.gz --progress > out.jsonl   # heartbeat to stderr
+```
+
+Pass `--gzip` (`-z`) to compress the output, and `--progress [N]` for a
+record-count heartbeat on stderr (every N records, default 100000). The
+record count is reported on stderr; corrupt or truncated input exits
+non-zero with a message on stderr.
+
+The `pfam` and `pfam-fasta` subcommands add Pfam options. `--pfam-id`
+(repeatable) restricts to given families (scanning stops once found). For
+`pfam`, `--with-member-accessions` / `--with-member-sequences` opt the
+per-member list into the output, and multiple `--pfam-id` write one file per
+family (`pfam_<accession>.jsonl`) under the `-o` directory unless `--join` is
+given:
+
+```bash
+bioparsers pfam Pfam-A.full.gz > pfam.jsonl                       # family metadata
+bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --pfam-id PF07714 \
+    --with-member-sequences -o out_dir/                           # one file per family
+bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --join > sh3.jsonl
+bioparsers pfam-fasta Pfam-A.fasta.gz --pfam-id PF00018 > sh3_members.jsonl
+```
 
 #### Library
 
@@ -91,39 +113,6 @@ for fam in pfam_stockholm.iter_records("Pfam-A.full.gz", accessions=["PF00018"],
 # Redundancy-reduced member sequences (one record per sequence):
 for member in pfam_fasta.iter_records("Pfam-A.fasta.gz", accessions=["PF00018"]):
     print(member.accession, member.region, member.sequence)
-```
-
-#### Command line
-
-The `bioparsers` console script parses a flat-file to JSONL (one compact
-object per line) on stdout, or to a file with `-o`. Input may be plain
-or gzipped:
-
-```bash
-bioparsers uniprot uniprot_sprot.dat.gz > out.jsonl
-bioparsers uniprot in.dat -o out.jsonl
-bioparsers uniprot in.dat.gz --gzip -o out.jsonl.gz   # compress output
-bioparsers uniprot in.dat.gz --progress > out.jsonl   # heartbeat to stderr
-```
-
-Pass `--gzip` (`-z`) to compress the output, and `--progress [N]` for a
-record-count heartbeat on stderr (every N records, default 100000). The
-record count is reported on stderr; corrupt or truncated input exits
-non-zero with a message on stderr.
-
-The `pfam` and `pfam-fasta` subcommands add Pfam options. `--pfam-id`
-(repeatable) restricts to given families (scanning stops once found). For
-`pfam`, `--with-member-accessions` / `--with-member-sequences` opt the
-per-member list into the output, and multiple `--pfam-id` write one file per
-family (`pfam_<accession>.jsonl`) under the `-o` directory unless `--join` is
-given:
-
-```bash
-bioparsers pfam Pfam-A.full.gz > pfam.jsonl                       # family metadata
-bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --pfam-id PF07714 \
-    --with-member-sequences -o out_dir/                           # one file per family
-bioparsers pfam Pfam-A.full.gz --pfam-id PF00018 --join > sh3.jsonl
-bioparsers pfam-fasta Pfam-A.fasta.gz --pfam-id PF00018 > sh3_members.jsonl
 ```
 
 ### Builders
